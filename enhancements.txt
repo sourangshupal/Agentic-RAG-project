@@ -1,0 +1,31 @@
+Option 2 — Add RedisInsight UI (Official Redis GUI)
+
+  Add this to your compose.yml under the services: section:
+
+    redisinsight:
+      image: redis/redisinsight:latest
+      container_name: rag-redisinsight
+      ports:
+        - "5540:5540"
+      networks:
+        - rag-network
+      restart: unless-stopped
+
+  Then run:
+  docker compose up -d redisinsight
+
+  Open http://localhost:5540 → click Add Database → enter:
+  - Host: redis
+  - Port: 6379
+  - Name: RAG Cache
+
+  You'll get a full visual UI showing all keys, values, TTLs, and memory usage.
+
+================================
+
+GET arxiv-papers-chunks/_search
+{
+    "size": 1,
+    "_source": ["arxiv_id", "title", "chunk_text", "embedding"],
+    "query": { "match_all": {} }
+}
