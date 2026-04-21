@@ -1,3 +1,5 @@
+name: agentic-rag-project
+
 services:
   # API service
   api:
