@@ -1,7 +1,6 @@
 from typing import Any, Dict
 
 from pydantic import BaseModel, Field
-
 from src.config import Settings, get_settings
 
 
@@ -24,7 +23,7 @@ class GraphConfig(BaseModel):
 
     max_retrieval_attempts: int = 2
     guardrail_threshold: int = 40
-    model: str = "qwen3:4b"
+    model: str = "gpt-4o-mini"
     temperature: float = 0.0
     top_k: int = 3
     use_hybrid: bool = True

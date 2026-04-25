@@ -1,11 +1,10 @@
 import logging
 from typing import Optional
 
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-
 from src.schemas.api.ask import AskRequest, AskResponse
 from src.schemas.api.search import HybridSearchRequest
+from telegram import Update
+from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
 logger = logging.getLogger(__name__)
 
@@ -18,14 +17,14 @@ class TelegramBot:
         bot_token: str,
         opensearch_client,
         embeddings_client,
-        ollama_client,
+        llm_client,
         cache_client=None,
     ):
         """Initialize bot with required services."""
         self.bot_token = bot_token
         self.opensearch = opensearch_client
         self.embeddings = embeddings_client
-        self.ollama = ollama_client
+        self.llm = llm_client
         self.cache = cache_client
         self.application: Optional[Application] = None
 
@@ -146,8 +145,6 @@ class TelegramBot:
                     logger.warning(f"Cache lookup failed: {e}")
 
             # RAG pipeline
-            from src.services.ollama.prompts import RAGPromptBuilder
-
             # Get embeddings if hybrid
             query_embedding = None
             if ask_request.use_hybrid:
@@ -187,9 +184,8 @@ class TelegramBot:
                 return
 
             # Generate answer
-            prompt = RAGPromptBuilder().create_rag_prompt(query=query, chunks=chunks)
-            ollama_response = await self.ollama.generate(model="llama3.2:1b", prompt=prompt, stream=False)
-            answer = ollama_response.get("response", "") if ollama_response else ""
+            rag_response = await self.llm.generate_rag_answer(query=query, chunks=chunks)
+            answer = rag_response.get("answer", "") if rag_response else ""
 
             # Build response
             response = AskResponse(

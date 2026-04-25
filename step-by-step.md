@@ -1,21 +1,28 @@
 # Step-by-Step Local Development Guide
 ## arXiv Paper Curator — Phase by Phase Setup
 
+> **Branch: `develop`** — This guide reflects the cloud-services stack (OpenAI, Neon, Upstash, Langfuse Cloud).
+> Only **4 Docker containers** run locally. Everything else is a managed cloud service.
+
 ---
 
 ## Prerequisites — Install These First
 
 | Tool | Why Needed | How to Install |
 |------|-----------|---------------|
-| **Docker Desktop** | Runs all 13 services | Download from docker.com |
+| **Docker Desktop** | Runs the 4 local containers | Download from docker.com |
 | **Python 3.12+** | Local dev & notebooks | `brew install python@3.12` (Mac) / python.org (Windows) |
 | **UV** | Package manager | See Step 1 below |
+| **OpenAI API Key** | LLM generation (all phases) | platform.openai.com |
 | **Jina AI API Key** | Vector embeddings (Phase 4+) | Sign up free at jina.ai |
+| **Neon account** | Serverless PostgreSQL | console.neon.tech (free tier) |
+| **Upstash account** | Serverless Redis cache | console.upstash.com (free tier) |
+| **Langfuse Cloud account** | Tracing & observability | cloud.langfuse.com (free tier) |
 
 **Hardware minimums:**
-- 8GB RAM (10GB+ recommended)
-- 10GB free disk space
-- Docker Desktop with memory set to 8GB+ (Docker Desktop → Settings → Resources → Memory)
+- 6GB RAM (8GB+ recommended — far less than before, no local LLM needed)
+- 5GB free disk space
+- Docker Desktop with memory set to 6GB+ (Docker Desktop → Settings → Resources → Memory)
 
 ---
 
@@ -39,29 +46,51 @@ uv --version
 ```bash
 git clone https://github.com/jamwithai/Agentic-RAG-project
 cd Agentic-RAG-project
+git checkout develop
 ```
 
 ### Step 3 — Create Your `.env` File
 
-```bash
-cp .env.example .env
-```
-
-Open `.env` and update only these 4 values:
+**Do NOT copy `.env.example` over your `.env`** — the example has placeholder values.
+Create a fresh `.env` with your real credentials:
 
 ```dotenv
-# Free key from jina.ai
-JINA_API_KEY=jina_xxxxxxxxxxxxxxxx
+# ── Application ───────────────────────────────────────────────
+DEBUG=true
+ENVIRONMENT=development
 
-# Run this in terminal → paste output here:  openssl rand -base64 32
-LANGFUSE_NEXTAUTH_SECRET=<paste output>
-LANGFUSE_SALT=<paste output>
+# ── OpenAI (platform.openai.com → API Keys) ───────────────────
+OPENAI_API_KEY=sk-proj-...
+OPENAI_MODEL=gpt-4o-mini
+OPENAI_TIMEOUT=300
 
-# Run this in terminal → paste output here:  openssl rand -hex 32
-LANGFUSE_ENCRYPTION_KEY=<paste output>
+# ── Neon Postgres (console.neon.tech → Connection string) ─────
+# Use postgresql+psycopg2:// prefix — required for SQLAlchemy
+POSTGRES_DATABASE_URL=postgresql+psycopg2://<user>:<password>@<host>.neon.tech/<db>?sslmode=require
+
+# ── Upstash Redis (console.upstash.com → TCP tab, NOT REST tab) ─
+REDIS__URL=rediss://default:<token>@<host>.upstash.io:6379
+REDIS__TTL_HOURS=6
+
+# ── Langfuse Cloud (us.cloud.langfuse.com → Project Settings → API Keys) ─
+# IMPORTANT: double underscore prefix
+LANGFUSE__PUBLIC_KEY=pk-lf-...
+LANGFUSE__SECRET_KEY=sk-lf-...
+LANGFUSE__HOST=https://us.cloud.langfuse.com
+LANGFUSE__ENABLED=true
+
+# ── Jina AI (jina.ai → API Keys) ──────────────────────────────
+JINA_API_KEY=jina_...
+
+# ── OpenSearch (local Docker) ──────────────────────────────────
+OPENSEARCH__HOST=http://localhost:9200
+OPENSEARCH__INDEX_NAME=arxiv-papers-chunks
+OPENSEARCH__VECTOR_DIMENSION=1024
 ```
 
-Leave everything else as-is. The defaults work for local development.
+> **Upstash note:** In the Upstash console, click **Connect → TCP tab** (not the REST tab) to get the `rediss://` URL.
+
+> **Langfuse note:** Use double underscores (`LANGFUSE__PUBLIC_KEY`) — this is how pydantic-settings reads nested config. Single-underscore vars are silently ignored.
 
 ### Step 4 — Install Python Dependencies
 
@@ -69,59 +98,71 @@ Leave everything else as-is. The defaults work for local development.
 uv sync
 ```
 
-Creates `.venv/` and installs all packages. Takes 2–3 minutes the first time.
+Creates `.venv/` and installs all packages. Takes 1–2 minutes the first time (subsequent runs use the UV cache).
 
 ---
 
 ## Phase 1 — Infrastructure Foundation
 
-**Goal:** Start all services and verify the infrastructure is working.
+**Goal:** Start the 4 local containers and verify cloud services are reachable.
 
-### Start All Containers
+### Verify Cloud Services First
+
+Before starting Docker, confirm all cloud APIs are reachable:
+
+```bash
+uv run python scripts/test_connections.py
+```
+
+All 5 checks should be green:
+```
+✅  OpenAI API
+✅  Neon Postgres
+✅  Upstash Redis
+✅  Langfuse Cloud
+✅  Jina AI
+```
+
+### Start the 4 Local Containers
 
 ```bash
 docker compose up --build -d
 ```
 
-> First run downloads ~3GB of Docker images. This takes 10–15 minutes.
+> First run pulls OpenSearch images (~1.5GB) and builds the API and Airflow images. Takes 5–10 minutes.
 
 ### Watch Startup Progress
 
 ```bash
-docker compose ps         # check all container statuses
+docker compose ps         # check container statuses
 docker compose logs -f    # stream live logs (Ctrl+C to stop)
 ```
 
-Wait until these containers show `healthy`:
+Wait until all containers show `healthy`:
 
 ```
-rag-api           healthy
-rag-postgres      healthy
-rag-opensearch    healthy
-rag-redis         healthy
-rag-ollama        healthy
-rag-airflow       healthy
+rag-api            healthy
+rag-opensearch     healthy
+rag-dashboards     healthy
+rag-airflow        healthy
 ```
-
-The Langfuse containers take the longest (up to 5 minutes).
-
-### Pull the LLM Model — One-Time Step
-
-Ollama starts empty. Pull the model manually:
-
-```bash
-docker exec -it rag-ollama ollama pull llama3.2:1b
-```
-
-Downloads ~1.3GB. Wait for `success`.
 
 ### Verify Health
 
 ```bash
-make health
-# or:
 curl http://localhost:8000/api/v1/health
-# Expected response: {"status":"ok"}
+```
+
+Expected response:
+```json
+{
+  "status": "ok",
+  "services": {
+    "database":   {"status": "healthy"},
+    "opensearch": {"status": "healthy"},
+    "openai":     {"status": "healthy"}
+  }
+}
 ```
 
 ### Open the Phase 1 Notebook
@@ -130,32 +171,28 @@ curl http://localhost:8000/api/v1/health
 uv run jupyter notebook notebooks/phase1/phase1_setup.ipynb
 ```
 
-Follow the notebook to verify each service one by one.
-
 ### Services Available This Phase
 
 | Service | URL | What to Explore |
 |---------|-----|----------------|
 | API Docs | http://localhost:8000/docs | Try the `/health` endpoint |
-| Airflow | http://localhost:8080 | See the `hello_world_dag` |
+| Airflow | http://localhost:8080 | admin / admin |
 | OpenSearch Dashboards | http://localhost:5601 | Explore the empty index |
-
-> **Airflow login:** Check `airflow/simple_auth_manager_passwords.json.generated` for auto-generated credentials.
+| Langfuse Cloud | https://us.cloud.langfuse.com | Your project dashboard |
 
 ### Phase 1 Checklist
 
-- [ ] All containers showing `healthy` in `docker compose ps`
+- [ ] `uv run python scripts/test_connections.py` — all 5 green
+- [ ] All 4 containers showing `healthy` in `docker compose ps`
 - [ ] `curl http://localhost:8000/api/v1/health` returns `{"status":"ok"}`
 - [ ] Airflow UI accessible at http://localhost:8080
-- [ ] `hello_world_dag` visible in Airflow
 - [ ] OpenSearch Dashboards accessible at http://localhost:5601
-- [ ] Ollama model pulled successfully
 
 ---
 
 ## Phase 2 — Data Ingestion Pipeline
 
-**Goal:** Automatically fetch papers from arXiv, parse their PDFs, and store them in PostgreSQL.
+**Goal:** Automatically fetch papers from arXiv, parse their PDFs, and store them in Neon PostgreSQL.
 
 ### Open the Phase 2 Notebook
 
@@ -175,8 +212,8 @@ What the pipeline does:
 ```
 Fetch 15 cs.AI papers from arXiv API
   → Download PDFs (5 parallel workers)
-  → Parse with Docling (extracts text + sections + references)
-  → Store in PostgreSQL
+  → Parse with Docling (extracts text + sections)
+  → Store in Neon PostgreSQL
   → Generate run statistics report
 ```
 
@@ -184,19 +221,30 @@ Takes ~5–10 minutes for 15 papers.
 
 ### Verify Papers Are Stored
 
+Connect to Neon via the Neon console SQL editor, or locally:
+
 ```bash
-docker exec -it rag-postgres psql -U rag_user -d rag_db \
-  -c "SELECT arxiv_id, title, pdf_processed FROM papers LIMIT 5;"
+# From your local machine (requires psycopg2 installed — already in .venv)
+uv run python -c "
+import psycopg2, os
+from dotenv import load_dotenv
+load_dotenv()
+conn = psycopg2.connect(os.environ['POSTGRES_DATABASE_URL'])
+cur = conn.cursor()
+cur.execute('SELECT arxiv_id, title, pdf_processed FROM papers LIMIT 5')
+for row in cur.fetchall(): print(row)
+conn.close()
+"
 ```
 
-You should see paper rows with titles and `pdf_processed = true`.
+You should see paper rows with titles.
 
 ### Phase 2 Checklist
 
 - [ ] `arxiv_paper_ingestion` DAG ran successfully in Airflow
-- [ ] Papers visible in PostgreSQL (query above)
+- [ ] Papers visible in Neon PostgreSQL (query above)
 - [ ] No failed tasks in the Airflow DAG run
-- [ ] At least 10 papers stored with `pdf_processed = true`
+- [ ] At least 10 papers stored
 
 ---
 
@@ -212,7 +260,7 @@ uv run jupyter notebook notebooks/phase3/phase3_opensearch.ipynb
 
 ### Try the Search API
 
-Open http://localhost:8000/docs → find `/api/v1/hybrid-search/` → click **Try it out** → paste:
+Open http://localhost:8000/docs → `/api/v1/hybrid-search/` → **Try it out**:
 
 ```json
 {
@@ -228,12 +276,6 @@ Open http://localhost:8000/docs → find `/api/v1/hybrid-search/` → click **Tr
 
 `use_hybrid: false` = pure BM25 keyword search this phase.
 
-### What to Observe
-
-- Results are ranked by keyword relevance score
-- Papers with your query terms in title/abstract rank higher
-- Try different queries and compare scores
-
 ### Phase 3 Checklist
 
 - [ ] OpenSearch index `arxiv-papers-chunks` created
@@ -245,7 +287,7 @@ Open http://localhost:8000/docs → find `/api/v1/hybrid-search/` → click **Tr
 
 ## Phase 4 — Hybrid Search (BM25 + Vector Embeddings)
 
-**Goal:** Add semantic vector search on top of BM25 using Jina AI embeddings and RRF fusion.
+**Goal:** Add semantic vector search using Jina AI embeddings and RRF fusion.
 
 > **Requires `JINA_API_KEY` set in your `.env` file.**
 
@@ -261,7 +303,7 @@ Papers are re-indexed with vector embeddings per chunk:
 
 ```
 Paper text
-  → TextChunker splits into 600-word chunks (with 100-word overlap)
+  → TextChunker splits into 600-word chunks (100-word overlap)
   → Each chunk → Jina AI API → 1024-dimensional vector
   → Stored in OpenSearch alongside BM25 text fields
 ```
@@ -282,25 +324,17 @@ Same endpoint, now with `use_hybrid: true`:
 }
 ```
 
-### Compare BM25 vs Hybrid
-
-Run the same query twice — once with `use_hybrid: false` and once with `use_hybrid: true`. Notice:
-- Hybrid finds semantically related papers even without exact keyword matches
-- BM25 only matches papers with the exact words you typed
-- RRF (Reciprocal Rank Fusion) combines both scores into one ranking
-
 ### Phase 4 Checklist
 
-- [ ] Jina API key set in `.env`
 - [ ] Papers re-indexed with vector embeddings
-- [ ] Hybrid search returning results with `search_mode: "hybrid"` in response
+- [ ] Hybrid search returning results with `search_mode: "hybrid"`
 - [ ] Semantic queries finding relevant papers without exact keyword matches
 
 ---
 
 ## Phase 5 — Complete RAG Pipeline
 
-**Goal:** Connect hybrid search to Ollama LLM to answer natural language questions.
+**Goal:** Connect hybrid search to the OpenAI API to answer natural language questions.
 
 ### Open the Phase 5 Notebook
 
@@ -317,18 +351,18 @@ http://localhost:8000/docs → `/api/v1/ask` → Try it out:
   "query": "What are the main challenges in training large language models?",
   "top_k": 3,
   "use_hybrid": true,
-  "model": "llama3.2:1b",
+  "model": "gpt-4o-mini",
   "categories": []
 }
 ```
 
 Response includes:
-- `answer` — LLM-generated answer using retrieved paper content
+- `answer` — OpenAI-generated answer using retrieved paper content
 - `sources` — which papers were used
 - `chunks_used` — how many text chunks provided as context
 - `search_mode` — `hybrid` or `bm25`
 
-First response takes 10–30 seconds (LLM generation). Be patient.
+Responses are fast — OpenAI API typically responds in 2–5 seconds.
 
 ### Try Streaming (Word-by-Word Response)
 
@@ -344,11 +378,11 @@ source .venv/bin/activate       # Mac/Linux
 python gradio_launcher.py
 ```
 
-Open http://localhost:7861 — a full chat interface for your RAG system.
+Open http://localhost:7861 — a full chat interface with model selector (`gpt-4o-mini`, `gpt-4o`).
 
 ### Phase 5 Checklist
 
-- [ ] `/api/v1/ask` returning an LLM-generated answer
+- [ ] `/api/v1/ask` returning an OpenAI-generated answer
 - [ ] Response includes `sources` and `chunks_used`
 - [ ] `/api/v1/stream` returning a streaming response
 - [ ] Gradio UI accessible at http://localhost:7861
@@ -358,7 +392,7 @@ Open http://localhost:7861 — a full chat interface for your RAG system.
 
 ## Phase 6 — Production Monitoring & Caching
 
-**Goal:** Add Langfuse tracing so you can observe the pipeline, and Redis caching so repeated queries are instant.
+**Goal:** Observe the pipeline via Langfuse Cloud and see Redis caching make repeated queries instant.
 
 ### Open the Phase 6 Notebook
 
@@ -366,53 +400,35 @@ Open http://localhost:7861 — a full chat interface for your RAG system.
 uv run jupyter notebook notebooks/phase6/phase6_cache_testing.ipynb
 ```
 
-### Set Up Langfuse
+### Langfuse Cloud is Already Configured
 
-1. Open http://localhost:3001
-2. Login with: `admin@example.com` / `admin123`
-3. Go to **Settings → API Keys → Create new key**
-4. Copy the Public Key (`pk-lf-...`) and Secret Key (`sk-lf-...`)
-5. Open your `.env` file and update:
-
-```dotenv
-LANGFUSE_PUBLIC_KEY=pk-lf-your-actual-key-here
-LANGFUSE_SECRET_KEY=sk-lf-your-actual-key-here
-LANGFUSE_ENABLED=true
-```
-
-6. Restart the API to pick up the new keys:
-
-```bash
-docker compose restart api
-```
-
-### See Tracing in Action
+No setup needed — Langfuse Cloud credentials are already in your `.env`. Traces appear automatically.
 
 1. Ask a question via http://localhost:8000/docs → `/api/v1/ask`
-2. Open Langfuse at http://localhost:3001 → click **Traces**
-3. Click on the trace to see every step:
-   - Time taken for embedding generation
-   - Time taken for OpenSearch query
-   - Prompt construction details
-   - LLM generation time
-   - Total end-to-end latency
+2. Open Langfuse → https://us.cloud.langfuse.com → your `agentic-rag` project → **Traces**
+3. Click on a trace to see every step:
+   - Embedding generation latency
+   - OpenSearch query latency
+   - Prompt construction
+   - LLM generation time and token count
+   - End-to-end latency
 
-### See Caching in Action
+### See Caching in Action (Upstash Redis)
 
 ```bash
-# Ask the exact same question twice via the API
-# First call:  ~10-30 seconds (LLM generation)
-# Second call: <100ms (Redis cache hit — 150-400x faster)
+# Ask the exact same question twice
+# First call:  ~3-5 seconds (OpenAI API)
+# Second call: <50ms (Upstash Redis cache hit — 100x+ faster)
 ```
 
-The `trace_id` in the response links back to Langfuse for debugging.
+The cache key is a SHA256 hash of the query + parameters. Exact match only — even a single character difference bypasses the cache (as intended).
 
 ### Phase 6 Checklist
 
-- [ ] Langfuse UI accessible and showing traces after each `/ask` call
+- [ ] Langfuse Cloud showing traces after each `/ask` call
 - [ ] Each trace shows embedding, search, prompt, and generation spans
-- [ ] Second call to same query returns in under 100ms (cache hit)
-- [ ] Langfuse dashboard shows latency metrics
+- [ ] Second call to the same query returns in under 100ms (cache hit)
+- [ ] Langfuse dashboard shows latency and token usage metrics
 
 ---
 
@@ -435,22 +451,22 @@ http://localhost:8000/docs → `/api/v1/ask-agentic`:
   "query": "What are the latest advances in transformer efficiency?",
   "top_k": 5,
   "use_hybrid": true,
-  "model": "llama3.2:1b",
+  "model": "gpt-4o-mini",
   "categories": []
 }
 ```
 
-The response now includes `reasoning_steps` — the agent's full thought process:
+The response includes `reasoning_steps` — the agent's full decision trace:
 
 ```json
 {
   "answer": "...",
   "sources": [...],
   "reasoning_steps": [
-    {"step": "guardrail",        "score": 8.5, "decision": "valid query"},
-    {"step": "retrieve",         "decision": "called retriever tool"},
-    {"step": "grade_documents",  "relevant": 4, "total": 5, "decision": "sufficient"},
-    {"step": "generate",         "decision": "answer generated"}
+    "Validated query scope (score: 85/100)",
+    "Retrieved documents (1 attempt(s))",
+    "Graded documents (4 relevant)",
+    "Generated answer from context"
   ],
   "retrieval_attempts": 1,
   "trace_id": "abc123"
@@ -464,24 +480,24 @@ The response now includes `reasoning_steps` — the agent's full thought process
   "query": "What is the best pizza recipe?",
   "top_k": 3,
   "use_hybrid": true,
-  "model": "llama3.2:1b",
+  "model": "gpt-4o-mini",
   "categories": []
 }
 ```
 
-The guardrail node detects this is not about research papers and returns a polite refusal. The LLM never runs — saves cost and prevents hallucination.
+The guardrail scores this as out-of-scope (low score) and returns a polite refusal without ever calling the retriever or spending tokens on generation.
 
 ### Test the Retry Loop
 
-Ask a very obscure or poorly worded question. Watch `reasoning_steps` — if grading fails, you'll see:
-- `rewrite_query` step appears
-- `retrieval_attempts` becomes 2 or 3
-- Agent rewrites and retries automatically
+Ask a vague or poorly worded question. Watch `reasoning_steps` — if grading fails:
+- A `rewrite_query` step appears
+- `retrieval_attempts` becomes 2
+- Agent rewrites the query and retries automatically
 
 ### Set Up Telegram Bot (Optional)
 
 1. Open Telegram → search for `@BotFather`
-2. Send `/newbot` → follow the prompts → copy the bot token
+2. Send `/newbot` → follow prompts → copy the bot token
 3. Update `.env`:
 
 ```dotenv
@@ -495,7 +511,7 @@ TELEGRAM__ENABLED=true
 docker compose restart api
 ```
 
-5. Open Telegram → find your new bot → ask it a research question
+5. Open Telegram → find your bot → ask it a research question
 
 ### Phase 7 Checklist
 
@@ -503,24 +519,8 @@ docker compose restart api
 - [ ] Guardrail correctly blocking off-topic queries
 - [ ] `retrieval_attempts` visible in response
 - [ ] Query rewriting visible when retrieval fails
+- [ ] Trace visible in Langfuse Cloud with full agent graph trace
 - [ ] (Optional) Telegram bot responding to research questions
-
----
-
-## Switching Between Phases
-
-The repository tags each phase's code as a release. To go back to a specific phase's state:
-
-```bash
-# Clone a specific phase (fresh start)
-git clone --branch phase3.0 https://github.com/jamwithai/Agentic-RAG-project
-cd Agentic-RAG-project
-uv sync
-docker compose down -v
-docker compose up --build -d
-```
-
-Available tags: `phase1.0`, `phase2.0`, `phase3.0`, `phase4.0`, `phase5.0`, `phase6.0`, `phase7.0`
 
 ---
 
@@ -528,22 +528,25 @@ Available tags: `phase1.0`, `phase2.0`, `phase3.0`, `phase4.0`, `phase5.0`, `pha
 
 ```bash
 # ── Service Management ─────────────────────────────────────────
-make start                          # start all services
-make stop                           # stop all services
-make restart                        # restart all services
+make start                          # start all 4 containers
+make stop                           # stop all containers
+make restart                        # restart all containers
 make status                         # show container statuses
-make health                         # check all service health endpoints
+make health                         # check all service health
 make logs                           # stream all logs
 
 # ── Individual Service Logs ────────────────────────────────────
 docker compose logs -f api
 docker compose logs -f airflow
 docker compose logs -f opensearch
-docker compose logs -f ollama
+docker compose logs -f opensearch-dashboards
 
 # ── Restart a Single Service ───────────────────────────────────
 docker compose restart api
 docker compose restart airflow
+
+# ── API Connectivity Check ─────────────────────────────────────
+uv run python scripts/test_connections.py   # checks all 5 cloud APIs
 
 # ── Testing ────────────────────────────────────────────────────
 make test                           # run all tests
@@ -551,28 +554,24 @@ uv run pytest tests/unit/ -v        # unit tests only
 uv run pytest tests/api/ -v         # API tests only
 uv run pytest tests/unit/services/agents/ -v   # agent tests only
 uv run pytest -k "test_guardrail"   # run tests matching a name
-make test-cov                       # tests with coverage report
 
 # ── Code Quality ───────────────────────────────────────────────
 make format                         # auto-format code (ruff)
 make lint                           # lint + type check (ruff + mypy)
 
-# ── LLM Model Management ───────────────────────────────────────
-docker exec -it rag-ollama ollama list          # see installed models
-docker exec -it rag-ollama ollama pull llama3.2:1b    # small, fast
-docker exec -it rag-ollama ollama pull llama3.1:8b    # bigger, smarter
+# ── Database (Neon) ────────────────────────────────────────────
+uv run python -c "
+import psycopg2, os; from dotenv import load_dotenv; load_dotenv()
+conn = psycopg2.connect(os.environ['POSTGRES_DATABASE_URL'])
+cur = conn.cursor()
+cur.execute('SELECT COUNT(*) FROM papers'); print('Papers:', cur.fetchone()[0])
+conn.close()
+"
 
-# ── Database ───────────────────────────────────────────────────
-docker exec -it rag-postgres psql -U rag_user -d rag_db
-# Inside psql:
-#   \dt               list tables
-#   SELECT COUNT(*) FROM papers;
-#   SELECT arxiv_id, title FROM papers LIMIT 5;
-#   \q                quit
-
-# ── Nuclear Reset (deletes all data) ──────────────────────────
+# ── Nuclear Reset (deletes local OpenSearch data) ─────────────
 docker compose down --volumes
 docker compose up --build -d
+# Note: Neon and Upstash data is cloud-managed — not deleted by the above
 ```
 
 ---
@@ -581,16 +580,19 @@ docker compose up --build -d
 
 | Problem | Cause | Fix |
 |---------|-------|-----|
-| OpenSearch won't start | Not enough memory | Increase Docker Desktop RAM to 10GB+ |
+| OpenSearch won't start | Not enough memory | Increase Docker Desktop RAM to 8GB+ |
 | `rag-api` stays unhealthy | Startup error | Run `docker compose logs api` to see the error |
-| Can't log into Airflow | Wrong credentials | Check `airflow/simple_auth_manager_passwords.json.generated` |
+| `test_connections.py` shows OpenAI ❌ | Invalid or missing API key | Check `OPENAI_API_KEY` in `.env` |
+| `test_connections.py` shows Neon ❌ | Wrong connection string | Check `POSTGRES_DATABASE_URL` — must use `postgresql+psycopg2://` prefix |
+| `test_connections.py` shows Redis ❌ | Wrong token or URL format | In Upstash console, use **TCP tab** (not REST tab) for the URL |
+| `test_connections.py` shows Langfuse ❌ | Wrong keys or host | Check `LANGFUSE__HOST=https://us.cloud.langfuse.com` (double underscore) |
 | Search returns 0 results | Papers not indexed | Trigger `arxiv_paper_ingestion` DAG in Airflow first |
-| Ollama returns empty answer | Model not pulled | Run `docker exec -it rag-ollama ollama pull llama3.2:1b` |
+| Can't log into Airflow | Wrong credentials | Default is admin / admin |
+| Slow first response | Cold start on OpenAI | Normal for first request — subsequent are faster |
+| Langfuse traces not appearing | Single-underscore env vars | Use `LANGFUSE__PUBLIC_KEY` (double underscore) not `LANGFUSE_PUBLIC_KEY` |
 | Port already in use | Another service on same port | Run `docker compose down` then try again |
-| Slow LLM responses | Small model on limited hardware | Normal — llama3.2:1b is minimal; use llama3.1:8b for better quality |
 | WSL/Ubuntu permission error | User ID mismatch | Uncomment `user: "50000:0"` in `compose.yml` under the airflow service |
-| Jina API errors | Invalid or missing key | Check `JINA_API_KEY` in `.env` is correct |
-| Langfuse not showing traces | Keys not configured | Follow Phase 6 Langfuse setup steps, restart API after updating `.env` |
+| Jina API errors | Invalid or missing key | Check `JINA_API_KEY` in `.env` |
 
 ---
 
@@ -600,32 +602,44 @@ docker compose up --build -d
 |---------|-----|------------|
 | API + Swagger Docs | http://localhost:8000/docs | none |
 | Gradio Chat UI | http://localhost:7861 | none |
-| Langfuse Tracing | http://localhost:3001 | admin@example.com / admin123 |
-| Airflow Pipelines | http://localhost:8080 | see `airflow/simple_auth_manager_passwords.json.generated` |
+| Airflow Pipelines | http://localhost:8080 | admin / admin |
 | OpenSearch Dashboards | http://localhost:5601 | none |
-| Ollama API | http://localhost:11434 | none |
-| PostgreSQL | localhost:5432 | rag_user / rag_password / rag_db |
-| Redis | localhost:6379 | no password |
+| Langfuse Tracing | https://us.cloud.langfuse.com | your Langfuse credentials |
+| Neon Database | https://console.neon.tech | your Neon credentials |
+| Upstash Redis | https://console.upstash.com | your Upstash credentials |
 
 ---
 
-## The Full Architecture Progression
+## Cloud Services — Free Tier Limits
+
+| Service | Free Limit | Notes |
+|---------|-----------|-------|
+| **Neon** | 512MB storage, 191h compute/month | More than enough for course |
+| **Upstash Redis** | 10k commands/day, 256MB | Plenty for dev/testing |
+| **Langfuse Cloud** | 50k traces/month | ~1,600 queries/day |
+| **OpenAI** | Pay-per-use | `gpt-4o-mini` is very cheap (~$0.00015/1k tokens) |
+| **Jina AI** | 1M tokens free | More than enough for indexing |
+
+---
+
+## The Full Architecture
 
 ```
-Phase 1   Docker + FastAPI + PostgreSQL + OpenSearch + Airflow
+Phase 1   Docker (4 containers) + FastAPI + Neon PostgreSQL + OpenSearch + Airflow
             ↓
-Phase 2   + arXiv fetching + PDF parsing (Docling) → PostgreSQL storage
+Phase 2   + arXiv fetching + PDF parsing (Docling) → Neon PostgreSQL storage
             ↓
 Phase 3   + OpenSearch BM25 indexing → keyword search API
             ↓
 Phase 4   + Jina embeddings + vector chunks → hybrid BM25+vector search with RRF
             ↓
-Phase 5   + Ollama LLM + RAG prompt builder → /ask + /stream + Gradio UI
+Phase 5   + OpenAI API (gpt-4o-mini) + RAG prompt builder → /ask + /stream + Gradio UI
             ↓
-Phase 6   + Langfuse tracing + Redis caching → observability + 150x speedup
+Phase 6   + Langfuse Cloud tracing + Upstash Redis caching → observability + 100x speedup
             ↓
 Phase 7   + LangGraph agent (guardrail → retrieve → grade → rewrite → generate)
            + Telegram Bot → mobile conversational access
 ```
 
-Each phase adds to the previous — nothing gets replaced until Phase 7 where the simple RAG chain is upgraded to a full LangGraph agent.
+**Local (Docker):** OpenSearch, OpenSearch Dashboards, FastAPI, Airflow
+**Cloud:** Neon (Postgres), Upstash (Redis), OpenAI (LLM), Jina AI (embeddings), Langfuse (tracing)

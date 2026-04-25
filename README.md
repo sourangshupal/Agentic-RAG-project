@@ -10,8 +10,9 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.12+-blue.svg" alt="Python Version">
   <img src="https://img.shields.io/badge/FastAPI-0.115+-green.svg" alt="FastAPI">
-  <img src="https://img.shields.io/badge/OpenSearch-2.19-orange.svg" alt="OpenSearch">
-  <img src="https://img.shields.io/badge/Docker-Compose-blue.svg" alt="Docker">
+  <img src="https://img.shields.io/badge/OpenSearch-2.19.5-orange.svg" alt="OpenSearch">
+  <img src="https://img.shields.io/badge/OpenAI-gpt--4o--mini-412991.svg" alt="OpenAI">
+  <img src="https://img.shields.io/badge/Docker-4%20containers-blue.svg" alt="Docker">
   <img src="https://img.shields.io/badge/Status-Phase%207%20Advanced%20Features-brightgreen.svg" alt="Status">
 </p>
 
@@ -29,23 +30,23 @@ This is a **learner-focused project** where you'll build a complete research ass
 
 **The arXiv Paper Curator** will teach you to build a **production-grade RAG system using industry best practices**. Unlike tutorials that jump straight to vector search, we follow the **professional path**: master keyword search foundations first, then enhance with vectors for hybrid retrieval.
 
-> **🎯 The Professional Difference:** We build RAG systems the way successful companies do - solid search foundations enhanced with AI, not AI-first approaches that ignore search fundamentals.
+> **🎯 The Professional Difference:** We build RAG systems the way successful companies do — solid search foundations enhanced with AI, not AI-first approaches that ignore search fundamentals.
 
 By the end of this course, you'll have your own AI research assistant and the deep technical skills to build production RAG systems for any domain.
 
 ### **🎓 What You'll Build**
 
-- **Phase 1:** Complete infrastructure with Docker, FastAPI, PostgreSQL, OpenSearch, and Airflow
-- **Phase 2:** Automated data pipeline fetching and parsing academic papers from arXiv  
+- **Phase 1:** Complete infrastructure with Docker, FastAPI, Neon PostgreSQL, OpenSearch, and Airflow
+- **Phase 2:** Automated data pipeline fetching and parsing academic papers from arXiv
 - **Phase 3:** Production BM25 keyword search with filtering and relevance scoring
 - **Phase 4:** Intelligent chunking + hybrid search combining keywords with semantic understanding
-- **Phase 5:** Complete RAG pipeline with local LLM, streaming responses, and Gradio interface
-- **Phase 6:** Production monitoring with Langfuse tracing and Redis caching for optimized performance
+- **Phase 5:** Complete RAG pipeline with OpenAI API, streaming responses, and Gradio interface
+- **Phase 6:** Production monitoring with Langfuse Cloud tracing and Upstash Redis caching
 - **Phase 7:** **Agentic RAG with LangGraph and Telegram Bot for mobile access**
 
 ---
 
-## 🏗️ System Architecture Evolution
+## 🏗️ System Architecture
 
 ### Phase 7: Agentic RAG & Telegram Bot Integration
 <div align="center">
@@ -59,58 +60,76 @@ By the end of this course, you'll have your own AI research assistant and the de
   <p><em>Detailed LangGraph workflow showing decision nodes, document grading, and adaptive retrieval</em></p>
 </div>
 
-
-**Phase 7 Code walkthrough + blog:** [Agentic RAG with LangGraph and Telegram](https://jamwithai.substack.com/p/agentic-rag-with-langgraph-and-telegram) 
+**Phase 7 Code walkthrough + blog:** [Agentic RAG with LangGraph and Telegram](https://jamwithai.substack.com/p/agentic-rag-with-langgraph-and-telegram)
 
 **Key Innovations in Phase 7:**
-- **Intelligent Decision-Making**: Agents evaluate and adapt retrieval strategies
-- **Document Grading**: Automatic relevance assessment with semantic evaluation
-- **Query Rewriting**: Adaptive query refinement when results are insufficient
-- **Guardrails**: Out-of-domain detection prevents hallucination
-- **Mobile Access**: Telegram bot for conversational AI on any device
-- **Transparency**: Full reasoning step tracking for debugging and trust
+- **Intelligent Decision-Making:** Agents evaluate and adapt retrieval strategies
+- **Document Grading:** Automatic relevance assessment with semantic evaluation
+- **Query Rewriting:** Adaptive query refinement when results are insufficient
+- **Guardrails:** Out-of-domain detection prevents hallucination
+- **Mobile Access:** Telegram bot for conversational AI on any device
+- **Transparency:** Full reasoning step tracking for debugging and trust
 
 ---
 
 ## 🚀 Quick Start
 
 ### **📋 Prerequisites**
-- **Docker Desktop** (with Docker Compose)  
+
+**Tools:**
+- **Docker Desktop** (with Docker Compose)
 - **Python 3.12+**
 - **UV Package Manager** ([Install Guide](https://docs.astral.sh/uv/getting-started/installation/))
-- **8GB+ RAM** and **20GB+ free disk space**
+
+**Cloud Accounts (all free tiers):**
+- **OpenAI** — LLM generation → [platform.openai.com](https://platform.openai.com)
+- **Jina AI** — Vector embeddings (Phase 4+) → [jina.ai](https://jina.ai)
+- **Neon** — Serverless PostgreSQL → [console.neon.tech](https://console.neon.tech)
+- **Upstash** — Serverless Redis → [console.upstash.com](https://console.upstash.com)
+- **Langfuse Cloud** — Tracing & observability → [cloud.langfuse.com](https://cloud.langfuse.com)
+
+**Hardware:** 6GB+ RAM, 5GB+ free disk space
+
+> **Why cloud services?** Running PostgreSQL, Redis, Langfuse (6 containers!), and a local LLM simultaneously requires 16GB+ RAM. By moving these to managed cloud free tiers, the local stack shrinks to **4 containers** — accessible on any machine.
 
 ### **⚡ Get Started**
 
 ```bash
-# 1. Clone and setup
-git clone <repository-url>
-cd arxiv-paper-curator
+# 1. Clone and switch to the develop branch
+git clone https://github.com/jamwithai/Agentic-RAG-project
+cd Agentic-RAG-project
+git checkout develop
 
-# 2. Configure environment (IMPORTANT!)
-cp .env.example .env
-# The .env file contains all necessary configuration for OpenSearch, 
-# arXiv API, and service connections. Defaults work out of the box.
-# You need to add Jina embeddings free api key and langfuse keys (check the blogs)
-
-# 3. Install dependencies
+# 2. Install dependencies
 uv sync
 
-# 4. Start all services
+# 3. Create your .env file with real credentials
+# (See step-by-step.md → Step 3 for the full template)
+# Key variables needed:
+#   OPENAI_API_KEY, POSTGRES_DATABASE_URL (Neon),
+#   REDIS__URL (Upstash TCP), LANGFUSE__PUBLIC_KEY,
+#   LANGFUSE__SECRET_KEY, JINA_API_KEY
+
+# 4. Verify all cloud APIs are reachable
+uv run python scripts/test_connections.py
+
+# 5. Start the 4 local containers
 docker compose up --build -d
 
-# 5. Verify everything works
+# 6. Verify everything works
 curl http://localhost:8000/api/v1/health
 ```
+
+> **Important:** Do not `cp .env.example .env` — the example contains placeholder values. Create `.env` fresh with your real credentials. See [step-by-step.md](step-by-step.md) for the exact template.
 
 ### **📚 Phase Learning Path**
 
 | Phase | Topic | Blog Post | Code Release |
 |-------|-------|-----------|--------------|
-| **Phase 0** | The Mother of AI project - 6 phases | [The Mother of AI project](https://jamwithai.substack.com/p/the-mother-of-ai-project) | - |
+| **Phase 0** | The Mother of AI project — overview | [The Mother of AI project](https://jamwithai.substack.com/p/the-mother-of-ai-project) | — |
 | **Phase 1** | Infrastructure Foundation | [The Infrastructure That Powers RAG Systems](https://jamwithai.substack.com/p/the-infrastructure-that-powers-rag) | [phase1.0](https://github.com/jamwithai/Agentic-RAG-project/releases/tag/phase1.0) |
 | **Phase 2** | Data Ingestion Pipeline | [Building Data Ingestion Pipelines for RAG](https://jamwithai.substack.com/p/bringing-your-rag-system-to-life) | [phase2.0](https://github.com/jamwithai/Agentic-RAG-project/releases/tag/phase2.0) |
-| **Phase 3** | OpenSearch ingestion & BM25 retrieval | [The Search Foundation Every RAG System Needs](https://jamwithai.substack.com/p/the-search-foundation-every-rag-system) | [phase3.0](https://github.com/jamwithai/Agentic-RAG-project/releases/tag/phase3.0) |
+| **Phase 3** | OpenSearch BM25 Retrieval | [The Search Foundation Every RAG System Needs](https://jamwithai.substack.com/p/the-search-foundation-every-rag-system) | [phase3.0](https://github.com/jamwithai/Agentic-RAG-project/releases/tag/phase3.0) |
 | **Phase 4** | **Chunking & Hybrid Search** | [The Chunking Strategy That Makes Hybrid Search Work](https://jamwithai.substack.com/p/chunking-strategies-and-hybrid-rag) | [phase4.0](https://github.com/jamwithai/Agentic-RAG-project/releases/tag/phase4.0) |
 | **Phase 5** | **Complete RAG system** | [The Complete RAG System](https://jamwithai.substack.com/p/the-complete-rag-system) | [phase5.0](https://github.com/jamwithai/Agentic-RAG-project/releases/tag/phase5.0) |
 | **Phase 6** | **Production monitoring & caching** | [Production-ready RAG: Monitoring & Caching](https://jamwithai.substack.com/p/production-ready-rag-monitoring-and) | [phase6.0](https://github.com/jamwithai/Agentic-RAG-project/releases/tag/phase6.0) |
@@ -118,14 +137,13 @@ curl http://localhost:8000/api/v1/health
 
 **📥 Clone a specific phase's release:**
 ```bash
-# Clone a specific phase's code
 git clone --branch <PHASE_TAG> https://github.com/jamwithai/Agentic-RAG-project
 cd Agentic-RAG-project
 uv sync
 docker compose down -v
 docker compose up --build -d
 
-# Replace <PHASE_TAG> with: phase1.0, phase2.0, etc.
+# Replace <PHASE_TAG> with: phase1.0, phase2.0, phase3.0 ...
 ```
 
 ### **📊 Access Your Services**
@@ -134,11 +152,10 @@ docker compose up --build -d
 |---------|-----|---------|
 | **API Documentation** | http://localhost:8000/docs | Interactive API testing |
 | **Gradio RAG Interface** | http://localhost:7861 | User-friendly chat interface |
-| **Langfuse Dashboard** | http://localhost:3000 | RAG pipeline monitoring & tracing |
-| **Airflow Dashboard** | http://localhost:8080 | Workflow management |
-| **OpenSearch Dashboards** | http://localhost:5601 | Hybrid search engine UI |
+| **Airflow Dashboard** | http://localhost:8080 | Workflow management (admin/admin) |
+| **OpenSearch Dashboards** | http://localhost:5601 | Search engine UI |
+| **Langfuse Cloud** | https://us.cloud.langfuse.com | RAG pipeline tracing |
 
-#### **NOTE**: Check airflow/simple_auth_manager_passwords.json.generated for Airflow username and password
 ---
 
 ## 📚 Phase 1: Infrastructure Foundation ✅
@@ -146,11 +163,10 @@ docker compose up --build -d
 **Start here!** Master the infrastructure that powers modern RAG systems.
 
 ### **🎯 Learning Objectives**
-- Complete infrastructure setup with Docker Compose
+- Complete infrastructure setup with Docker Compose (4 local containers)
 - FastAPI development with automatic documentation and health checks
-- PostgreSQL database configuration and management
+- Cloud database configuration — Neon serverless PostgreSQL
 - OpenSearch hybrid search engine setup
-- Ollama local LLM service configuration
 - Service orchestration and health monitoring
 - Professional development environment with code quality tools
 
@@ -161,29 +177,28 @@ docker compose up --build -d
 </p>
 
 **Infrastructure Components:**
-- **FastAPI**: REST endpoints with async support (Port 8000)  
-- **PostgreSQL 16**: Paper metadata storage (Port 5432)
-- **OpenSearch 2.19**: Search engine with dashboards (Ports 9200, 5601)
-- **Apache Airflow 3.0**: Workflow orchestration (Port 8080)
-- **Ollama**: Local LLM server (Port 11434)
+
+| Component | Where | Port |
+|-----------|-------|------|
+| **FastAPI** | Docker (local) | 8000 |
+| **OpenSearch 2.19.5** | Docker (local) | 9200, 5601 |
+| **Apache Airflow 2.10.3** | Docker (local) | 8080 |
+| **Neon PostgreSQL** | Cloud (managed) | — |
 
 ### **📓 Setup Guide**
 
 ```bash
-# Launch the Phase 1 notebook
 uv run jupyter notebook notebooks/phase1/phase1_setup.ipynb
 ```
 
-**Completion Guide:** Follow the [Phase 1 notebook](notebooks/phase1/phase1_setup.ipynb) for hands-on setup and verification steps.
-
 ### **📖 Deep Dive**
-**Blog Post:** [The Infrastructure That Powers RAG Systems](https://jamwithai.substack.com/p/the-infrastructure-that-powers-rag) - Detailed walkthrough and production insights
+**Blog Post:** [The Infrastructure That Powers RAG Systems](https://jamwithai.substack.com/p/the-infrastructure-that-powers-rag)
 
 ---
 
 ## 📚 Phase 2: Data Ingestion Pipeline ✅
 
-**Building on Phase 1 infrastructure:** Learn to fetch, process, and store academic papers automatically.
+**Building on Phase 1:** Learn to fetch, process, and store academic papers automatically.
 
 ### **🎯 Learning Objectives**
 - arXiv API integration with rate limiting and retry logic
@@ -199,37 +214,33 @@ uv run jupyter notebook notebooks/phase1/phase1_setup.ipynb
 </p>
 
 **Data Pipeline Components:**
-- **MetadataFetcher**: 🎯 Main orchestrator coordinating the entire pipeline
-- **ArxivClient**: Rate-limited paper fetching with retry logic
-- **PDFParserService**: Docling-powered scientific document processing  
-- **Airflow DAGs**: Automated daily paper ingestion workflows
-- **PostgreSQL Storage**: Structured paper metadata and content
+- **MetadataFetcher** — main orchestrator coordinating the entire pipeline
+- **ArxivClient** — rate-limited paper fetching with retry logic
+- **PDFParserService** — Docling-powered scientific document processing
+- **Airflow DAGs** — automated daily paper ingestion (Monday–Friday, 6 AM UTC)
+- **Neon PostgreSQL** — structured paper metadata and content storage
 
 ### **📓 Implementation Guide**
 
 ```bash
-# Launch the Phase 2 notebook  
 uv run jupyter notebook notebooks/phase2/phase2_arxiv_integration.ipynb
 ```
 
-**Completion Guide:** Follow the [Phase 2 notebook](notebooks/phase2/phase2_arxiv_integration.ipynb) for hands-on implementation and verification steps.
-
 ### **📖 Deep Dive**
-**Blog Post:** [Building Data Ingestion Pipelines for RAG](https://jamwithai.substack.com/p/bringing-your-rag-system-to-life) - arXiv API integration and PDF processing
+**Blog Post:** [Building Data Ingestion Pipelines for RAG](https://jamwithai.substack.com/p/bringing-your-rag-system-to-life)
 
 ---
 
-## 📚 Phase 3: Keyword Search First - The Critical Foundation
+## 📚 Phase 3: Keyword Search First — The Critical Foundation
 
-**Building on Phases 1-2 foundation:** Implement the keyword search foundation that professional RAG systems rely on.
+**Building on Phases 1–2:** Implement the keyword search foundation that professional RAG systems rely on.
 
 ### **🎯 Learning Objectives**
-- Why keyword search is essential for RAG systems (foundation first approach)
+- Why keyword search is essential for RAG systems
 - OpenSearch index management, mappings, and search optimization
 - BM25 algorithm and the math behind effective keyword search
-- Query DSL for building complex search queries with filters and boosting
+- Query DSL for complex search queries with filters and boosting
 - Search analytics for measuring relevance and performance
-- Production patterns used by real companies
 
 ### **🏗️ Architecture Overview**
 
@@ -237,36 +248,27 @@ uv run jupyter notebook notebooks/phase2/phase2_arxiv_integration.ipynb
   <img src="static/phase3_opensearch_flow.png" alt="Phase 3 OpenSearch Flow Architecture" width="800">
 </p>
 
-**Search Infrastructure Components:**
-- **OpenSearch Service**: `src/services/opensearch/` - Professional search service implementation
-- **Search API**: `src/routers/search.py` - Search API endpoints with BM25 scoring
-- **Learning Materials**: `notebooks/phase3/` - Complete OpenSearch integration guide
-- **Quality Metrics**: Precision, recall, and relevance scoring
-
 ### **📓 Setup Guide**
 
 ```bash
-# Launch the Phase 3 notebook
 uv run jupyter notebook notebooks/phase3/phase3_opensearch.ipynb
 ```
 
-**Completion Guide:** Follow the [Phase 3 notebook](notebooks/phase3/phase3_opensearch.ipynb) for hands-on OpenSearch setup and BM25 search implementation.
-
 ### **📖 Deep Dive**
-**Blog Post:** [The Search Foundation Every RAG System Needs](https://jamwithai.substack.com/p/the-search-foundation-every-rag-system) - Complete BM25 implementation with OpenSearch
+**Blog Post:** [The Search Foundation Every RAG System Needs](https://jamwithai.substack.com/p/the-search-foundation-every-rag-system)
 
 ---
 
-## 📚 Phase 4: Chunking & Hybrid Search - The Semantic Layer
+## 📚 Phase 4: Chunking & Hybrid Search — The Semantic Layer
 
-**Building on Phase 3 foundation:** Add the semantic layer that makes search truly intelligent.
+**Building on Phase 3:** Add the semantic layer that makes search truly intelligent.
 
 ### **🎯 Learning Objectives**
 - Section-based chunking with intelligent document segmentation
-- Production embeddings with Jina AI integration and fallback strategies
-- Hybrid search mastery using RRF fusion for keyword + semantic retrieval
+- Production embeddings with Jina AI (1024-dimensional vectors)
+- Hybrid search using RRF fusion for keyword + semantic retrieval
 - Unified API design with single endpoint supporting multiple search modes
-- Performance analysis and trade-offs between search approaches
+- Performance analysis between search approaches
 
 ### **🏗️ Architecture Overview**
 
@@ -274,36 +276,32 @@ uv run jupyter notebook notebooks/phase3/phase3_opensearch.ipynb
   <img src="static/phase4_hybrid_opensearch.png" alt="Phase 4 Hybrid Search Architecture" width="800">
 </p>
 
-**Hybrid Search Infrastructure Components:**
-- **Text Chunker**: `src/services/indexing/text_chunker.py` - Section-aware chunking with overlap strategies
-- **Embeddings Service**: `src/services/embeddings/` - Production embedding pipeline with Jina AI
-- **Hybrid Search API**: `src/routers/hybrid_search.py` - Unified search API supporting all modes
-- **Learning Materials**: `notebooks/phase4/` - Complete hybrid search implementation guide
+**Hybrid Search Components:**
+- **Text Chunker** — `src/services/indexing/text_chunker.py` — section-aware chunking (600-word chunks, 100-word overlap)
+- **Embeddings Service** — `src/services/embeddings/` — Jina AI integration
+- **Hybrid Search API** — `src/routers/hybrid_search.py` — unified BM25 + vector endpoint with RRF
 
 ### **📓 Setup Guide**
 
 ```bash
-# Launch the Phase 4 notebook
 uv run jupyter notebook notebooks/phase4/phase4_hybrid_search.ipynb
 ```
 
-**Completion Guide:** Follow the [Phase 4 notebook](notebooks/phase4/phase4_hybrid_search.ipynb) for hands-on implementation and verification steps.
-
 ### **📖 Deep Dive**
-**Blog Post:** [The Chunking Strategy That Makes Hybrid Search Work](https://jamwithai.substack.com/p/chunking-strategies-and-hybrid-rag) - Production chunking and RRF fusion implementation
+**Blog Post:** [The Chunking Strategy That Makes Hybrid Search Work](https://jamwithai.substack.com/p/chunking-strategies-and-hybrid-rag)
 
 ---
 
-## 📚 Phase 5: Complete RAG Pipeline with LLM Integration
+## 📚 Phase 5: Complete RAG Pipeline with OpenAI Integration
 
-**Building on Phase 4 hybrid search:** Add the LLM layer that turns search into intelligent conversation.
+**Building on Phase 4:** Add the LLM layer that turns search into intelligent conversation.
 
 ### **🎯 Learning Objectives**
-- Local LLM integration with Ollama for complete data privacy
-- Performance optimization with 80% prompt reduction (6x speed improvement)
+- OpenAI API integration (`gpt-4o-mini`) for high-quality, fast generation
 - Streaming implementation using Server-Sent Events for real-time responses
 - Dual API design with standard and streaming endpoints
-- Interactive Gradio interface with advanced parameter controls
+- Prompt engineering for academic paper Q&A
+- Interactive Gradio interface with model selection
 
 ### **🏗️ Architecture Overview**
 
@@ -311,17 +309,23 @@ uv run jupyter notebook notebooks/phase4/phase4_hybrid_search.ipynb
   <img src="static/phase5_complete_rag.png" alt="Phase 5 Complete RAG System Architecture" width="900">
 </p>
 
-**Complete RAG Infrastructure Components:**
-- **RAG Endpoints**: `src/routers/ask.py` - Dual endpoints (`/api/v1/ask` + `/api/v1/stream`)
-- **Ollama Service**: `src/services/ollama/` - LLM client with optimized prompts
-- **System Prompt**: `src/services/ollama/prompts/rag_system.txt` - Optimized for academic papers
-- **Gradio Interface**: `src/gradio_app.py` - Interactive web UI with streaming support
-- **Launcher Script**: `gradio_launcher.py` - Easy-launch script (runs on port 7861)
+**Complete RAG Request Flow:**
+```
+Query → Upstash Redis cache check
+  → Jina AI embeddings → OpenSearch hybrid search (BM25 + vector + RRF)
+  → RAGPromptBuilder → OpenAI API (gpt-4o-mini)
+  → cache result → return answer + sources
+```
+
+**Components:**
+- **RAG Endpoints** — `src/routers/ask.py` — `/api/v1/ask` + `/api/v1/stream`
+- **OpenAI LLM Client** — `src/services/openai_llm/` — async chat completions with streaming
+- **Prompt Builder** — `src/services/ollama/prompts.py` — optimized for academic papers
+- **Gradio Interface** — `src/gradio_app.py` — chat UI with model selector
 
 ### **📓 Setup Guide**
 
 ```bash
-# Launch the Phase 5 notebook
 uv run jupyter notebook notebooks/phase5/phase5_complete_rag_system.ipynb
 
 # Launch Gradio interface
@@ -329,23 +333,31 @@ uv run python gradio_launcher.py
 # Open http://localhost:7861
 ```
 
-**Completion Guide:** Follow the [Phase 5 notebook](notebooks/phase5/phase5_complete_rag_system.ipynb) for hands-on LLM integration and RAG pipeline implementation.
+**Try it:** POST to `/api/v1/ask` with:
+```json
+{
+  "query": "What are the main challenges in training large language models?",
+  "top_k": 3,
+  "use_hybrid": true,
+  "model": "gpt-4o-mini"
+}
+```
 
 ### **📖 Deep Dive**
-**Blog Post:** [The Complete RAG System](https://jamwithai.substack.com/p/the-complete-rag-system) - Complete RAG system with local LLM integration and optimization techniques
+**Blog Post:** [The Complete RAG System](https://jamwithai.substack.com/p/the-complete-rag-system)
 
 ---
 
 ## 📚 Phase 6: Production Monitoring and Caching
 
-**Building on Phase 5 complete RAG system:** Add observability, performance optimization, and production-grade monitoring.
+**Building on Phase 5:** Add observability, caching, and production-grade performance.
 
 ### **🎯 Learning Objectives**
-- Langfuse integration for end-to-end RAG pipeline tracing
-- Redis caching strategy with intelligent cache keys and TTL management
-- Performance monitoring with real-time dashboards for latency and costs
+- Langfuse Cloud integration for end-to-end RAG pipeline tracing
+- Upstash Redis caching with intelligent cache keys and TTL management
+- Performance monitoring with real-time dashboards for latency and token usage
 - Production patterns for observability and optimization
-- Cost analysis and LLM usage optimization (150-400x speedup with caching)
+- 100x+ speedup on repeated queries via exact-match cache
 
 ### **🏗️ Architecture Overview**
 
@@ -353,38 +365,35 @@ uv run python gradio_launcher.py
   <img src="static/phase6_monitoring_and_caching.png" alt="Phase 6 Monitoring & Caching Architecture" width="900">
 </p>
 
-**Production Infrastructure Components:**
-- **Langfuse Service**: `src/services/langfuse/` - Complete tracing integration with RAG-specific metrics
-- **Cache Service**: `src/services/cache/` - Redis client with exact-match caching and graceful fallback
-- **Updated Endpoints**: `src/routers/ask.py` - Integrated tracing and caching middleware
-- **Docker Config**: `docker-compose.yml` - Added Redis service and Langfuse local instance
-- **Learning Materials**: `notebooks/phase6/` - Complete monitoring and caching implementation guide
+**Production Components:**
+- **Langfuse Cloud** — `src/services/langfuse/` — automatic trace per request; view at [us.cloud.langfuse.com](https://us.cloud.langfuse.com)
+- **Upstash Redis** — `src/services/cache/` — SHA256-keyed exact-match cache, 6hr TTL
+- **Updated Endpoints** — `src/routers/ask.py` — cache-first pattern; OpenAI only called on cache miss
 
 ### **📓 Setup Guide**
 
 ```bash
-# Launch the Phase 6 notebook
 uv run jupyter notebook notebooks/phase6/phase6_cache_testing.ipynb
 ```
 
-**Completion Guide:** Follow the [Phase 6 notebook](notebooks/phase6/phase6_cache_testing.ipynb) for hands-on Langfuse tracing and Redis caching implementation.
+No extra configuration needed — Langfuse Cloud and Upstash are already wired up in your `.env`. Traces appear in your Langfuse project automatically after the first `/ask` call.
 
 ### **📖 Deep Dive**
-**Blog Post:** [Production-ready RAG: Monitoring & Caching](https://jamwithai.substack.com/p/production-ready-rag-monitoring-and) - Production-ready RAG with monitoring and caching
+**Blog Post:** [Production-ready RAG: Monitoring & Caching](https://jamwithai.substack.com/p/production-ready-rag-monitoring-and)
 
 ---
 
 ## 📚 Phase 7: Agentic RAG with LangGraph and Telegram Bot
 
-**Building on Phase 6 production system:** Add intelligent reasoning, multi-step decision-making, and Telegram bot integration for mobile-first AI interactions.
+**Building on Phase 6:** Add intelligent reasoning, multi-step decision-making, and Telegram bot integration.
 
 ### **🎯 Learning Objectives**
-- LangGraph workflows for state-based agent orchestration with decision nodes
+- LangGraph workflows for state-based agent orchestration
 - Guardrail implementation for query validation and domain boundary detection
 - Document grading with semantic relevance evaluation
 - Query rewriting for automatic query refinement and better retrieval
-- Adaptive retrieval with multi-attempt retrieval and intelligent fallback
-- Telegram bot integration with async operations and error handling
+- Adaptive retrieval with multi-attempt strategies and intelligent fallback
+- Telegram bot integration with async operations
 - Reasoning transparency by exposing agent decision-making process
 
 ### **🏗️ Architecture Overview**
@@ -393,41 +402,50 @@ uv run jupyter notebook notebooks/phase6/phase6_cache_testing.ipynb
   <img src="static/phase7_telegram_and_agentic_ai.png" alt="Phase 7 Agentic RAG & Telegram Architecture" width="900">
 </p>
 
-**Agentic RAG Infrastructure Components:**
-- **Agent Nodes**: `src/services/agents/nodes/` - Guardrail, retrieve, grade, rewrite, and generate nodes
-- **Workflow Orchestration**: `src/services/agents/agentic_rag.py` - LangGraph workflow coordination
-- **Telegram Bot**: `src/services/telegram/` - Command handlers and message processing
-- **Agentic Endpoint**: `src/routers/agentic_ask.py` - Agentic RAG API endpoint
-- **Learning Materials**: `notebooks/phase7/` - Phase 7 learning materials and examples
+**LangGraph Agent Flow:**
+```
+guardrail_node → [out_of_scope if score < threshold]
+  → retrieve_node (calls OpenSearch retriever tool)
+  → grade_documents_node (OpenAI evaluates relevance)
+      pass  → generate_answer_node → END
+      fail  → rewrite_query_node → retrieve_node (retry)
+```
+
+**Components:**
+- **Agent Nodes** — `src/services/agents/nodes/` — guardrail, retrieve, grade, rewrite, generate
+- **LangGraph Workflow** — `src/services/agents/agentic_rag.py` — state machine with `Runtime[Context]`
+- **Agent Context** — `src/services/agents/context.py` — type-safe dependency injection into nodes
+- **Telegram Bot** — `src/services/telegram/` — command handlers and RAG integration
+- **Agentic Endpoint** — `src/routers/agentic_ask.py`
 
 ### **📓 Setup Guide**
 
 ```bash
-# Launch the Phase 7 notebook
 uv run jupyter notebook notebooks/phase7/phase7_agentic_rag.ipynb
 ```
 
-**Completion Guide:** Follow the [Phase 7 notebook](notebooks/phase7/phase7_agentic_rag.ipynb) for hands-on LangGraph agentic RAG and Telegram bot implementation.
+**Try the guardrail:** POST to `/api/v1/ask-agentic` with `"query": "What is the best pizza recipe?"` — it blocks the query without calling the retriever.
 
 ### **📖 Deep Dive**
-**Blog Post:** [Agentic RAG with LangGraph and Telegram](https://jamwithai.substack.com/p/agentic-rag-with-langgraph-and-telegram) - Building intelligent agents with decision-making, adaptive retrieval, and mobile access
+**Blog Post:** [Agentic RAG with LangGraph and Telegram](https://jamwithai.substack.com/p/agentic-rag-with-langgraph-and-telegram)
 
 ---
 
 ## ⚙️ Configuration
 
-**Setup:**
-```bash
-cp .env.example .env
-# Edit .env for your environment
-```
+**Key environment variables** (see `.env.example` for the full template):
 
-**Key Variables:**
-- `JINA_API_KEY` - Required for Phase 4+ (hybrid search with embeddings)
-- `TELEGRAM__BOT_TOKEN` - Required for Phase 7 (Telegram bot integration)
-- `LANGFUSE__PUBLIC_KEY` & `LANGFUSE__SECRET_KEY` - Optional for Phase 6 (monitoring)
+| Variable | Required | Phase | Where to get it |
+|----------|----------|-------|----------------|
+| `OPENAI_API_KEY` | ✅ | 5+ | platform.openai.com → API Keys |
+| `JINA_API_KEY` | ✅ | 4+ | jina.ai → API Keys |
+| `POSTGRES_DATABASE_URL` | ✅ | All | Neon console → Connection string |
+| `REDIS__URL` | ✅ | 6+ | Upstash console → **TCP tab** |
+| `LANGFUSE__PUBLIC_KEY` | ✅ | 6+ | Langfuse Cloud → Project Settings → API Keys |
+| `LANGFUSE__SECRET_KEY` | ✅ | 6+ | Langfuse Cloud → Project Settings → API Keys |
+| `TELEGRAM__BOT_TOKEN` | Optional | 7 | Telegram @BotFather |
 
-**Complete Configuration:** See [.env.example](.env.example) for all available options and detailed documentation.
+> **Double underscore is required** for nested settings (`LANGFUSE__HOST`, `REDIS__URL`, `OPENSEARCH__HOST`). Single-underscore variants are silently ignored by pydantic-settings.
 
 ---
 
@@ -435,84 +453,93 @@ cp .env.example .env
 
 ### **🛠️ Technology Stack**
 
-| Service | Purpose | Status |
-|---------|---------|--------|
-| **FastAPI** | REST API with automatic docs | ✅ Ready |
-| **PostgreSQL 16** | Paper metadata and content storage | ✅ Ready |
-| **OpenSearch 2.19** | Hybrid search engine (BM25 + Vector) | ✅ Ready |
-| **Apache Airflow 3.0** | Workflow automation | ✅ Ready |
-| **Jina AI** | Embedding generation (Phase 4) | ✅ Ready |
-| **Ollama** | Local LLM serving (Phase 5) | ✅ Ready |
-| **Redis** | High-performance caching (Phase 6) | ✅ Ready |
-| **Langfuse** | RAG pipeline observability (Phase 6) | ✅ Ready |
+| Component | Technology | Where |
+|-----------|-----------|-------|
+| **API Framework** | FastAPI 0.115+ | Docker (local) |
+| **Search Engine** | OpenSearch 2.19.5 | Docker (local) |
+| **Workflow Orchestration** | Apache Airflow 2.10.3 | Docker (local) |
+| **Search UI** | OpenSearch Dashboards 2.19.5 | Docker (local) |
+| **Database** | Neon (serverless PostgreSQL 17) | Cloud |
+| **Cache** | Upstash Redis (serverless) | Cloud |
+| **LLM Generation** | OpenAI API (gpt-4o-mini) | Cloud |
+| **Embeddings** | Jina AI (1024-dim) | Cloud |
+| **Observability** | Langfuse Cloud | Cloud |
+| **PDF Parsing** | Docling | In-process |
+| **Agent Orchestration** | LangGraph | In-process |
 
-**Development Tools:** UV, Ruff, MyPy, Pytest, Docker Compose
+**Dev Tools:** UV, Ruff, MyPy, Pytest
 
 ### **🏗️ Project Structure**
 
 ```
 arxiv-paper-curator/
-├── src/                    # Main application code
-│   ├── routers/            # API endpoints (search, ask, papers)
-│   ├── services/           # Business logic (opensearch, ollama, agents, cache)
-│   ├── models/             # Database models (SQLAlchemy)
-│   ├── schemas/            # Pydantic validation schemas
-│   └── config.py           # Environment configuration
-├── notebooks/              # Phase learning materials (phase1-7)
-├── airflow/                # Workflow orchestration (DAGs)
-├── tests/                  # Test suite
-└── compose.yml             # Docker service orchestration
+├── src/                         # Main application code
+│   ├── routers/                 # API endpoints (search, ask, agentic_ask)
+│   ├── services/
+│   │   ├── openai_llm/          # OpenAI LLM client (Phase 5+)
+│   │   ├── agents/              # LangGraph nodes + workflow (Phase 7)
+│   │   ├── opensearch/          # Search client + query builder
+│   │   ├── embeddings/          # Jina AI embeddings
+│   │   ├── cache/               # Upstash Redis cache
+│   │   ├── langfuse/            # Langfuse Cloud tracing
+│   │   └── telegram/            # Telegram bot (Phase 7)
+│   ├── models/                  # SQLAlchemy models
+│   ├── schemas/                 # Pydantic schemas
+│   └── config.py                # pydantic-settings configuration
+├── airflow/                     # Airflow Dockerfile + DAGs
+│   ├── Dockerfile               # Uses uv for fast installs
+│   ├── dags/                    # arxiv_paper_ingestion DAG
+│   └── entrypoint.sh
+├── opensearch_dashboards/       # OpenSearch Dashboards config
+├── notebooks/                   # Phase learning materials (phase1–7)
+├── scripts/
+│   └── test_connections.py      # Verify all cloud APIs
+├── tests/                       # Unit + API tests
+├── compose.yml                  # 4-container Docker stack
+├── step-by-step.md              # Detailed phase-by-phase guide
+└── .env.example                 # Environment template
 ```
 
-### **📡 API Endpoints Reference**
+### **📡 API Endpoints**
 
 | Endpoint | Method | Description | Phase |
 |----------|--------|-------------|-------|
-| `/health` | GET | Service health check | Phase 1 |
-| `/api/v1/papers` | GET | List stored papers | Phase 2 |
-| `/api/v1/papers/{id}` | GET | Get specific paper | Phase 2 |
-| `/api/v1/search` | POST | BM25 keyword search | Phase 3 |
-| `/api/v1/hybrid-search/` | POST | Hybrid search (BM25 + Vector) | **Phase 4** |
+| `/api/v1/health` | GET | Service health check | 1 |
+| `/api/v1/hybrid-search/` | POST | BM25 or hybrid search | 3–4 |
+| `/api/v1/ask` | POST | RAG question answering | 5 |
+| `/api/v1/stream` | POST | Streaming RAG response | 5 |
+| `/api/v1/ask-agentic` | POST | Agentic RAG with LangGraph | 7 |
+| `/api/v1/feedback` | POST | Submit Langfuse trace feedback | 7 |
 
-**API Documentation:** Visit http://localhost:8000/docs for interactive API explorer
+**Full docs:** http://localhost:8000/docs
 
 ### **🔧 Essential Commands**
 
-#### **Using the Makefile** (Recommended)
 ```bash
-# View all available commands
-make help
+# ── Service Management ─────────────────────────────────────────
+make start                          # start all 4 containers
+make stop                           # stop all containers
+make health                         # verify all services healthy
 
-# Quick workflow
-make start         # Start all services
-make health        # Check all services health
-make test          # Run tests
-make stop          # Stop services
-```
+# ── Verify cloud APIs ──────────────────────────────────────────
+uv run python scripts/test_connections.py
 
-#### **All Available Commands**
-| Command | Description |
-|---------|-------------|
-| `make start` | Start all services |
-| `make stop` | Stop all services |
-| `make restart` | Restart all services |
-| `make status` | Show service status |
-| `make logs` | Show service logs |
-| `make health` | Check all services health |
-| `make setup` | Install Python dependencies |
-| `make format` | Format code |
-| `make lint` | Lint and type check |
-| `make test` | Run tests |
-| `make test-cov` | Run tests with coverage |
-| `make clean` | Clean up everything |
+# ── Logs ───────────────────────────────────────────────────────
+docker compose logs -f api
+docker compose logs -f airflow
 
-#### **Direct Commands** (Alternative)
-```bash
-# If you prefer using commands directly
-docker compose up --build -d    # Start services
-docker compose ps               # Check status
-docker compose logs            # View logs
-uv run pytest                 # Run tests
+# ── Testing ────────────────────────────────────────────────────
+make test                           # all tests
+uv run pytest tests/unit/ -v        # unit tests
+uv run pytest tests/api/ -v         # API tests
+
+# ── Code Quality ───────────────────────────────────────────────
+make format                         # ruff format
+make lint                           # ruff check + mypy
+
+# ── Nuclear Reset ──────────────────────────────────────────────
+docker compose down --volumes && docker compose up --build -d
+# Note: Neon and Upstash data is cloud-managed — not deleted by above
 ```
 
 ### **🎓 Target Audience**
@@ -526,30 +553,35 @@ uv run pytest                 # Run tests
 
 ## 🛠️ Troubleshooting
 
-**Common Issues:**
-- **Services not starting?** Wait 2-3 minutes, check `docker compose logs`
-- **Port conflicts?** Stop other services using ports 8000, 8080, 5432, 9200
-- **Memory issues?** Increase Docker Desktop memory allocation
+| Problem | Fix |
+|---------|-----|
+| `test_connections.py` shows ❌ for any service | Check the corresponding credentials in `.env` |
+| Langfuse traces not appearing | Use `LANGFUSE__PUBLIC_KEY` (double underscore) — single underscore is silently ignored |
+| Upstash Redis connection fails | Use the **TCP tab** URL in Upstash console (`rediss://`), not the REST tab |
+| Search returns 0 results | Trigger `arxiv_paper_ingestion` DAG in Airflow first |
+| Airflow won't start | Run `docker compose logs airflow` — check Neon connection string |
+| OpenSearch won't start | Increase Docker Desktop RAM to 8GB+ |
+| `rag-api` stays unhealthy | Run `docker compose logs api` — usually a missing env var |
+| Port already in use | Run `docker compose down` then try again |
 
 **Get Help:**
-- Check the comprehensive Phase 1 notebook troubleshooting section
-- Review service logs: `docker compose logs [service-name]`
-- Complete reset: `docker compose down --volumes && docker compose up --build -d`
+- Detailed setup: [step-by-step.md](step-by-step.md)
+- Phase-by-phase notebooks: `notebooks/phase1` through `notebooks/phase7`
+- Service logs: `docker compose logs [service-name]`
 
 ---
 
-## 💰 Cost Structure
+## 💰 Cost
 
-**This course is completely free!** You'll only need minimal costs for optional services:
-- **Local Development:** $0 (everything runs locally)
-- **Optional Cloud APIs:** ~$2-5 for external LLM services (if chosen)
+**Local Docker services:** Free  
+**Cloud free tiers:** Free (Neon 512MB, Upstash 10k cmd/day, Langfuse 50k traces/month)  
+**OpenAI API:** Pay-per-use — `gpt-4o-mini` costs ~$0.00015 per 1k input tokens. A typical RAG question with 3 chunks of context costs under $0.001. With Redis caching, repeated queries cost $0.
 
 ---
 
 <div align="center">
   <h3>🎉 Ready to Start Your AI Engineering Journey?</h3>
   <p><strong>Begin with the Phase 1 setup notebook and build your first production RAG system!</strong></p>
-  
   <p><em>For learners who want to master modern AI engineering</em></p>
   <p><strong>Built with love by <a href="https://www.linkedin.com/in/shirin-khosravi-jam/">Shirin Khosravi Jam</a> & <a href="https://www.linkedin.com/in/shantanuladhwe/">Shantanu Ladhwe</a></strong></p>
 </div>
@@ -564,4 +596,4 @@ uv run pytest                 # Run tests
 
 ## 📄 License
 
-MIT License - see [LICENSE](LICENSE) file for details.
+MIT License — see [LICENSE](LICENSE) file for details.

@@ -1,0 +1,11 @@
+server.host: "0.0.0.0"
+server.port: 5601
+
+opensearch.hosts: ["http://opensearch:9200"]
+
+# Use the current (non-deprecated) allow-list key.
+# "requestHeadersWhitelist" was renamed in OpenSearch Dashboards 2.x.
+opensearch.requestHeadersAllowlist: ["Authorization", "X-Security-Token", "securitytenant"]
+
+# Suppress verbose plugin logs
+logging.verbose: false

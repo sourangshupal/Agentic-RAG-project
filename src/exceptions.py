@@ -82,6 +82,18 @@ class OllamaTimeoutError(OllamaException):
     """Exception raised when Ollama service times out."""
 
 
+class OpenAILLMException(LLMException):
+    """Exception raised for OpenAI API errors."""
+
+
+class OpenAIConnectionError(OpenAILLMException):
+    """Exception raised when cannot reach the OpenAI API."""
+
+
+class OpenAITimeoutError(OpenAILLMException):
+    """Exception raised when the OpenAI API times out."""
+
+
 # General application exceptions
 class ConfigurationError(Exception):
     """Exception raised when configuration is invalid."""

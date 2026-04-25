@@ -1,13 +1,39 @@
-import pytest
 from unittest.mock import AsyncMock
-from langchain_core.documents import Document
 
+import pytest
+from langchain_core.documents import Document
 from src.services.agents.tools import create_retriever_tool
 
 
 @pytest.mark.asyncio
 async def test_create_retriever_tool_basic(mock_opensearch_client, mock_jina_embeddings_client):
     """Test basic retriever tool creation and invocation."""
+    from unittest.mock import Mock
+
+    mock_opensearch_client.search_unified = Mock(
+        return_value={
+            "hits": [
+                {
+                    "chunk_text": "Transformers are neural network architectures based on self-attention mechanisms.",
+                    "arxiv_id": "1706.03762",
+                    "title": "Attention Is All You Need",
+                    "authors": "Vaswani et al.",
+                    "score": 0.95,
+                    "section_name": "Abstract",
+                },
+                {
+                    "chunk_text": "BERT is a bidirectional transformer pre-trained on large corpora.",
+                    "arxiv_id": "1810.04805",
+                    "title": "BERT: Pre-training of Deep Bidirectional Transformers",
+                    "authors": "Devlin et al.",
+                    "score": 0.88,
+                    "section_name": "Introduction",
+                },
+            ],
+            "total": 2,
+        }
+    )
+
     tool = create_retriever_tool(
         opensearch_client=mock_opensearch_client,
         embeddings_client=mock_jina_embeddings_client,

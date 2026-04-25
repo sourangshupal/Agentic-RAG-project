@@ -87,7 +87,7 @@ async def ainvoke_grade_documents_step(
             question=question,
         )
 
-        llm = runtime.context.ollama_client.get_langchain_model(
+        llm = runtime.context.llm_client.get_langchain_model(
             model=runtime.context.model_name,
             temperature=0.0,
         )

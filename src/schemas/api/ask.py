@@ -9,7 +9,7 @@ class AskRequest(BaseModel):
     query: str = Field(..., description="User's question", min_length=1, max_length=1000)
     top_k: int = Field(3, description="Number of top chunks to retrieve", ge=1, le=10)
     use_hybrid: bool = Field(True, description="Use hybrid search (BM25 + vector)")
-    model: str = Field("qwen3:4b", description="Ollama model to use for generation")
+    model: str = Field("gpt-4o-mini", description="OpenAI model to use for generation")
     categories: Optional[List[str]] = Field(None, description="Filter by arXiv categories")
 
     class Config:
@@ -18,7 +18,7 @@ class AskRequest(BaseModel):
                 "query": "What are transformers in machine learning?",
                 "top_k": 3,
                 "use_hybrid": True,
-                "model": "llama3.2:1b",
+                "model": "gpt-4o-mini",
                 "categories": ["cs.AI", "cs.LG"],
             }
         }
@@ -41,7 +41,7 @@ class AskResponse(BaseModel):
                 "sources": ["https://arxiv.org/pdf/1706.03762.pdf", "https://arxiv.org/pdf/1810.04805.pdf"],
                 "chunks_used": 3,
                 "search_mode": "hybrid",
-                "model": "qwen3:4b",
+                "model": "gpt-4o-mini",
             }
         }
 
@@ -53,6 +53,7 @@ class AgenticAskResponse(AskResponse):
     sources: List[Any] = Field(..., description="Source papers with metadata")
     reasoning_steps: List[str] = Field(..., description="Agent's decision-making steps")
     retrieval_attempts: int = Field(..., description="Number of document retrieval attempts")
+    rewritten_query: Optional[str] = Field(None, description="Rewritten query if agent refined it")
     trace_id: Optional[str] = Field(None, description="Langfuse trace ID for feedback and debugging")
 
     class Config:

@@ -12,7 +12,7 @@ from src.services.arxiv.factory import make_arxiv_client
 from src.services.cache.factory import make_cache_client
 from src.services.embeddings.factory import make_embeddings_service
 from src.services.langfuse.factory import make_langfuse_tracer
-from src.services.ollama.factory import make_ollama_client
+from src.services.openai_llm.factory import make_openai_llm_client
 from src.services.opensearch.factory import make_opensearch_client
 from src.services.pdf_parser.factory import make_pdf_parser_service
 from src.services.telegram.factory import make_telegram_service
@@ -67,16 +67,16 @@ async def lifespan(app: FastAPI):
     app.state.arxiv_client = make_arxiv_client()
     app.state.pdf_parser = make_pdf_parser_service()
     app.state.embeddings_service = make_embeddings_service()
-    app.state.ollama_client = make_ollama_client()
+    app.state.llm_client = make_openai_llm_client()
     app.state.langfuse_tracer = make_langfuse_tracer()
     app.state.cache_client = make_cache_client(settings)
-    logger.info("Services initialized: arXiv API client, PDF parser, OpenSearch, Embeddings, Ollama, Langfuse, Cache")
+    logger.info("Services initialized: arXiv API client, PDF parser, OpenSearch, Embeddings, OpenAI LLM, Langfuse, Cache")
 
     # Initialize Telegram bot (Phase 7)
     telegram_service = make_telegram_service(
         opensearch_client=app.state.opensearch_client,
         embeddings_client=app.state.embeddings_service,
-        ollama_client=app.state.ollama_client,
+        llm_client=app.state.llm_client,
         cache_client=app.state.cache_client,
         langfuse_tracer=app.state.langfuse_tracer,
     )

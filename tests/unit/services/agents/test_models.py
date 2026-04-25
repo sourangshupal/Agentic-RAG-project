@@ -1,14 +1,13 @@
 import pytest
 from pydantic import ValidationError
-
 from src.services.agents.models import (
-    GuardrailScoring,
     GradeDocuments,
+    GradingResult,
+    GuardrailScoring,
+    ReasoningStep,
+    RoutingDecision,
     SourceItem,
     ToolArtefact,
-    RoutingDecision,
-    GradingResult,
-    ReasoningStep,
 )
 
 

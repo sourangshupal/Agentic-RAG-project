@@ -116,7 +116,7 @@ class LangfuseSettings(BaseConfigSettings):
 
     public_key: str = ""
     secret_key: str = ""
-    host: str = "http://localhost:3000"  # Self-hosted Langfuse URL
+    host: str = "https://us.cloud.langfuse.com"
     enabled: bool = True
     flush_at: int = 15  # Number of events before flushing
     flush_interval: float = 1.0  # Seconds between flushes
@@ -134,16 +134,8 @@ class RedisSettings(BaseConfigSettings):
         case_sensitive=False,
     )
 
-    host: str = "localhost"
-    port: int = 6379
-    password: str = ""
-    db: int = 0
-    decode_responses: bool = True
-    socket_timeout: int = 30
-    socket_connect_timeout: int = 30
-
-    # Cache settings
-    ttl_hours: int = 6  # Cache TTL in hours
+    url: str = "redis://localhost:6379"
+    ttl_hours: int = 6
 
 
 class TelegramSettings(BaseConfigSettings):
@@ -167,12 +159,12 @@ class Settings(BaseConfigSettings):
 
     postgres_database_url: str = "postgresql://rag_user:rag_password@localhost:5432/rag_db"
     postgres_echo_sql: bool = False
-    postgres_pool_size: int = 20
+    postgres_pool_size: int = 5
     postgres_max_overflow: int = 0
 
-    ollama_host: str = "http://localhost:11434"
-    ollama_model: str = "qwen3:4b"
-    ollama_timeout: int = 300
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4o-mini"
+    openai_timeout: int = 300
 
     # Jina AI embeddings configuration
     jina_api_key: str = ""

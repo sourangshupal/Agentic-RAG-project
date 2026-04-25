@@ -8,14 +8,18 @@ from .client import LangfuseTracer
 
 
 class RAGTracer:
-    """Clean, purpose-built tracer for RAG operations."""
+    """Clean, purpose-built tracer for RAG operations. Handles None tracer gracefully."""
 
-    def __init__(self, tracer: LangfuseTracer):
+    def __init__(self, tracer: Optional[LangfuseTracer]):
         self.tracer = tracer
+        self._enabled = tracer is not None
 
     @contextmanager
     def trace_request(self, user_id: str, query: str):
         """Main request trace context manager."""
+        if not self._enabled:
+            yield None
+            return
         try:
             with self.tracer.start_span(
                 name="rag_request",
@@ -29,6 +33,9 @@ class RAGTracer:
     @contextmanager
     def trace_embedding(self, trace, query: str):
         """Query embedding operation with timing."""
+        if not self._enabled:
+            yield None
+            return
         start_time = time.time()
         with self.tracer.start_span(
             name="query_embedding",
@@ -47,6 +54,9 @@ class RAGTracer:
     @contextmanager
     def trace_search(self, trace, query: str, top_k: int):
         """Search operation with timing."""
+        if not self._enabled:
+            yield None
+            return
         with self.tracer.start_span(
             name="search_retrieval",
             input_data={"query": query, "top_k": top_k},
@@ -55,7 +65,7 @@ class RAGTracer:
 
     def end_search(self, span, chunks: List[Dict], arxiv_ids: List[str], total_hits: int):
         """End search span with essential results."""
-        if not span:
+        if not self._enabled or not span:
             return
 
         self.tracer.update_span(
@@ -71,6 +81,9 @@ class RAGTracer:
     @contextmanager
     def trace_prompt_construction(self, trace, chunks: List[Dict]):
         """Prompt building with timing."""
+        if not self._enabled:
+            yield None
+            return
         with self.tracer.start_span(
             name="prompt_construction",
             input_data={"chunk_count": len(chunks)},
@@ -79,7 +92,7 @@ class RAGTracer:
 
     def end_prompt(self, span, prompt: str):
         """End prompt span with final prompt."""
-        if not span:
+        if not self._enabled or not span:
             return
 
         self.tracer.update_span(
@@ -93,6 +106,9 @@ class RAGTracer:
     @contextmanager
     def trace_generation(self, trace, model: str, prompt: str):
         """LLM generation with timing."""
+        if not self._enabled:
+            yield None
+            return
         with self.tracer.start_span(
             name="llm_generation",
             input_data={"model": model, "prompt_length": len(prompt), "prompt": prompt},
@@ -101,7 +117,7 @@ class RAGTracer:
 
     def end_generation(self, span, response: str, model: str):
         """End generation span with response."""
-        if not span:
+        if not self._enabled or not span:
             return
 
         self.tracer.update_span(span=span, output={"response": response, "response_length": len(response), "model_used": model})

@@ -50,6 +50,7 @@ async def ask_agentic(
             search_mode="hybrid" if request.use_hybrid else "bm25",
             reasoning_steps=result.get("reasoning_steps", []),
             retrieval_attempts=result.get("retrieval_attempts", 0),
+            rewritten_query=result.get("rewritten_query"),
             trace_id=result.get("trace_id"),
         )
 

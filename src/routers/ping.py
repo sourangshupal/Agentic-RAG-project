@@ -3,7 +3,7 @@ from sqlalchemy import text
 
 from ..dependencies import DatabaseDep, OpenSearchDep, SettingsDep
 from ..schemas.api.health import HealthResponse, ServiceStatus
-from ..services.ollama import OllamaClient
+from ..services.openai_llm.client import OpenAILLMClient
 
 router = APIRouter()
 
@@ -22,7 +22,6 @@ async def health_check(settings: SettingsDep, database: DatabaseDep, opensearch_
         """Helper to standardize service health checks."""
         try:
             if kwargs.get("is_async"):
-                # Handle async functions separately in the calling code
                 return check_func(*args)
             result = check_func(*args)
             services[name] = result
@@ -53,15 +52,15 @@ async def health_check(settings: SettingsDep, database: DatabaseDep, opensearch_
     _check_service("database", _check_database)
     _check_service("opensearch", _check_opensearch)
 
-    # Handle Ollama async check separately
+    # OpenAI API health check
     try:
-        ollama_client = OllamaClient(settings)
-        ollama_health = await ollama_client.health_check()
-        services["ollama"] = ServiceStatus(status=ollama_health["status"], message=ollama_health["message"])
-        if ollama_health["status"] != "healthy":
+        llm_client = OpenAILLMClient(settings)
+        openai_health = await llm_client.health_check()
+        services["openai"] = ServiceStatus(status=openai_health["status"], message=openai_health["message"])
+        if openai_health["status"] != "healthy":
             overall_status = "degraded"
     except Exception as e:
-        services["ollama"] = ServiceStatus(status="unhealthy", message=str(e))
+        services["openai"] = ServiceStatus(status="unhealthy", message=str(e))
         overall_status = "degraded"
 
     return HealthResponse(

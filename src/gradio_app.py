@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 # Configuration
 API_BASE_URL = "http://localhost:8000/api/v1"
-DEFAULT_MODEL = "llama3.2:1b"
+DEFAULT_MODEL = "gpt-4o-mini"
 AVAILABLE_CATEGORIES = ["cs.AI", "cs.LG"]
 
 
@@ -151,10 +151,10 @@ def create_gradio_interface():
                     )
 
                     model_choice = gr.Dropdown(
-                        choices=["llama3.2:1b", "llama3.2:3b", "llama3.1:8b", "qwen2.5:7b"],
+                        choices=["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1"],
                         value=DEFAULT_MODEL,
-                        label="LLM Model",
-                        info="Larger models may give better answers but are slower",
+                        label="OpenAI Model",
+                        info="gpt-4o-mini is fastest; gpt-4o gives richer answers",
                     )
 
                     categories = gr.Textbox(
@@ -170,11 +170,11 @@ def create_gradio_interface():
         # Examples
         gr.Examples(
             examples=[
-                ["What are transformers in machine learning?", 3, True, "llama3.2:1b", "cs.AI, cs.LG"],
-                ["How do convolutional neural networks work?", 5, True, "llama3.2:1b", "cs.CV, cs.LG"],
-                ["What is attention mechanism in deep learning?", 4, False, "llama3.2:1b", "cs.AI"],
-                ["Explain reinforcement learning algorithms", 3, True, "llama3.2:1b", "cs.LG, cs.AI"],
-                ["What are the latest developments in NLP?", 5, True, "llama3.2:1b", "cs.CL"],
+                ["What are transformers in machine learning?", 3, True, "gpt-4o-mini", "cs.AI, cs.LG"],
+                ["How do convolutional neural networks work?", 5, True, "gpt-4o-mini", "cs.CV, cs.LG"],
+                ["What is attention mechanism in deep learning?", 4, False, "gpt-4o-mini", "cs.AI"],
+                ["Explain reinforcement learning algorithms", 3, True, "gpt-4o-mini", "cs.LG, cs.AI"],
+                ["What are the latest developments in NLP?", 5, True, "gpt-4o-mini", "cs.CL"],
             ],
             inputs=[query_input, top_k, use_hybrid, model_choice, categories],
         )

@@ -1,19 +1,19 @@
 """Tests for AgenticRAGService using LangGraph 2.0 Runtime pattern."""
 
-import pytest
 from unittest.mock import AsyncMock, Mock
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
+import pytest
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from src.services.agents.agentic_rag import AgenticRAGService
 from src.services.agents.config import GraphConfig
 from src.services.agents.models import GuardrailScoring
 
 
 @pytest.fixture
-def test_service(mock_opensearch_client, mock_ollama_client, mock_jina_embeddings_client):
+def test_service(mock_opensearch_client, mock_llm_client, mock_jina_embeddings_client):
     """Create AgenticRAGService with mocked dependencies."""
     config = GraphConfig(
-        model="llama3.2:1b",
+        model="gpt-4o-mini",
         temperature=0.0,
         top_k=3,
         use_hybrid=True,
@@ -22,7 +22,7 @@ def test_service(mock_opensearch_client, mock_ollama_client, mock_jina_embedding
     )
     return AgenticRAGService(
         opensearch_client=mock_opensearch_client,
-        ollama_client=mock_ollama_client,
+        llm_client=mock_llm_client,
         embeddings_client=mock_jina_embeddings_client,
         langfuse_tracer=None,
         graph_config=config,
@@ -35,14 +35,14 @@ class TestAgenticRAGServiceInitialization:
     def test_service_initialization(self, test_service):
         """Test that service initializes correctly."""
         assert test_service.opensearch is not None
-        assert test_service.ollama is not None
+        assert test_service.llm is not None
         assert test_service.embeddings is not None
         assert test_service.graph is not None
         assert test_service.graph_config is not None
 
     def test_graph_config_values(self, test_service):
         """Test graph configuration values."""
-        assert test_service.graph_config.model == "llama3.2:1b"
+        assert test_service.graph_config.model == "gpt-4o-mini"
         assert test_service.graph_config.top_k == 3
         assert test_service.graph_config.use_hybrid is True
         assert test_service.graph_config.max_retrieval_attempts == 2
