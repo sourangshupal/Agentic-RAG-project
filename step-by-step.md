@@ -44,7 +44,7 @@ uv --version
 ### Step 2 — Clone the Repository
 
 ```bash
-git clone https://github.com/jamwithai/Agentic-RAG-project
+git clone https://github.com/sourangshupal/Agentic-RAG-project
 cd Agentic-RAG-project
 git checkout develop
 ```
@@ -614,7 +614,7 @@ docker compose up --build -d
 
 | Service | Free Limit | Notes |
 |---------|-----------|-------|
-| **Neon** | 512MB storage, 191h compute/month | More than enough for course |
+| **Neon** | 512MB storage, 191h compute/month | More than enough for dev and testing |
 | **Upstash Redis** | 10k commands/day, 256MB | Plenty for dev/testing |
 | **Langfuse Cloud** | 50k traces/month | ~1,600 queries/day |
 | **OpenAI** | Pay-per-use | `gpt-4o-mini` is very cheap (~$0.00015/1k tokens) |
