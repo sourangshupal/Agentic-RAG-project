@@ -36,8 +36,6 @@ fi
 # Initialise / migrate Airflow metadata database
 echo "Initializing Airflow database..."
 airflow db migrate
-
-# Sync FAB permissions FIRST so roles (Admin, Viewer, etc.) exist before user create.
 echo "Syncing Airflow FAB permissions..."
 airflow sync-perm
 
@@ -50,6 +48,13 @@ airflow users create \
     --role Admin \
     --email admin@example.com \
     --password admin || echo "Admin user already exists"
+
+# Pre-sync FAB permissions BEFORE starting the webserver.
+# With UPDATE_FAB_PERMS=False in compose.yml, gunicorn workers won't re-run this,
+# so the webserver starts immediately. On first boot this takes ~60-90s against Neon;
+# on subsequent boots permissions already exist so it finishes in a few seconds.
+#echo "Syncing Airflow FAB permissions..."
+#airflow sync-perm
 
 # Start webserver in background (no --daemon to keep it as a child process),
 # then run scheduler in foreground so Docker tracks the container's main process.

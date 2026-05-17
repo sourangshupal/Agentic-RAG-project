@@ -21,15 +21,20 @@ ENV UV_LINK_MODE=copy \
     UV_COMPILE_BYTECODE=1 \
     UV_PYTHON_DOWNLOADS=never
 
+# ── corporate CA cert (injected at build time if present) ────────────────────
+COPY corporate_ca.pem /usr/local/share/ca-certificates/corporate_ca.crt
+
 # ── system deps ───────────────────────────────────────────────────────────────
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         build-essential \
+        ca-certificates \
         curl \
         git \
         libpq-dev \
         poppler-utils \
         tesseract-ocr \
+    && update-ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # ── airflow user ──────────────────────────────────────────────────────────────
@@ -44,7 +49,7 @@ RUN mkdir -p ${AIRFLOW_HOME}/dags ${AIRFLOW_HOME}/logs ${AIRFLOW_HOME}/plugins &
 # Uses the official Airflow constraint file to pin every transitive dep.
 # --mount=type=cache keeps the uv download cache warm across rebuilds.
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install --system \
+    uv pip install --system --system-certs \
         "apache-airflow[postgres]==${AIRFLOW_VERSION}" \
         --constraint "${CONSTRAINT_URL}" \
         psycopg2-binary
@@ -53,20 +58,23 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Install torch from the CPU wheel index BEFORE requirements-airflow.txt so
 # pip/uv's resolver sees torch already satisfied and never fetches the
 # ~4 GB CUDA variant that PyPI serves on Linux by default.
+# Falls back to PyPI if the PyTorch index is unreachable (e.g. corporate proxy).
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install --system \
+    uv pip install --system --system-certs \
         torch torchvision torchaudio \
-        --index-url https://download.pytorch.org/whl/cpu
+        --index https://download.pytorch.org/whl/cpu \
+        --index-strategy unsafe-best-match \
+    || uv pip install --system --system-certs torch torchvision torchaudio
 
 # ── project requirements ──────────────────────────────────────────────────────
-COPY requirements-airflow.txt /tmp/requirements-airflow.txt
+COPY airflow/requirements-airflow.txt /tmp/requirements-airflow.txt
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install --system \
+    uv pip install --system --system-certs \
         -r /tmp/requirements-airflow.txt
 
 # ── entrypoint ────────────────────────────────────────────────────────────────
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+COPY airflow/entrypoint.sh /entrypoint.sh
+RUN sed -i 's/\r//' /entrypoint.sh && chmod +x /entrypoint.sh
 
 USER airflow
 WORKDIR ${AIRFLOW_HOME}
