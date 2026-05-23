@@ -188,6 +188,29 @@ class LangfuseTracer:
             logger.error(f"Error submitting feedback: {e}")
             return False
 
+    def score_current_trace(self, score: float, name: str = "answer_relevance", comment: Optional[str] = None):
+        """Score the current active trace (0.0–1.0)."""
+        if not self.client:
+            return
+        try:
+            self.client.score_current_trace(name=name, value=score, comment=comment)
+        except Exception as e:
+            logger.warning(f"Failed to score trace: {e}")
+
+    def save_to_dataset(self, query: str, answer: str, dataset_name: str = "rag_eval", metadata: Optional[Dict[str, Any]] = None):
+        """Save a Q&A pair to a Langfuse dataset for evaluation."""
+        if not self.client:
+            return
+        try:
+            self.client.create_dataset_item(
+                dataset_name=dataset_name,
+                input={"query": query},
+                expected_output={"answer": answer},
+                metadata=metadata or {},
+            )
+        except Exception as e:
+            logger.warning(f"Failed to save dataset item: {e}")
+
     def flush(self):
         """Flush any pending traces."""
         if self.client:

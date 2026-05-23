@@ -15,7 +15,7 @@ class RAGTracer:
         self._enabled = tracer is not None
 
     @contextmanager
-    def trace_request(self, user_id: str, query: str):
+    def trace_request(self, user_id: str, query: str, session_id: Optional[str] = None):
         """Main request trace context manager."""
         if not self._enabled:
             yield None
@@ -24,7 +24,7 @@ class RAGTracer:
             with self.tracer.start_span(
                 name="rag_request",
                 input_data={"query": query, "user_id": user_id},
-                metadata={"simplified_tracing": True},
+                metadata={"simplified_tracing": True, "session_id": session_id, "user_id": user_id},
             ) as trace:
                 yield trace
         finally:
