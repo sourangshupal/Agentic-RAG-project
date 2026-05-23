@@ -30,7 +30,7 @@ cp .env.example .env
 
 # 2. Verify OpenSearch settings are properly configured
 # Your .env should contain these critical Phase 3 settings:
-# OPENSEARCH__HOST=http://opensearch:9200
+# OPENSEARCH__HOST=http://localhost:9200
 # OPENSEARCH__INDEX_NAME=arxiv-papers
 ```
 

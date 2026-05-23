@@ -22,10 +22,10 @@ A comprehensive Jupyter notebook that guides students through:
 </p>
 
 **Data Pipeline Overview:**
-- **MetadataFetcher**: 🎯 Main orchestrator coordinating the entire pipeline
+- **MetadataFetcher**: Main orchestrator coordinating the entire pipeline
 - **ArxivClient**: Rate-limited fetching with retry logic (3-second delays)
 - **PDFParserService**: Scientific PDF parsing with structured content extraction
-- **PaperRepository**: PostgreSQL integration with upsert operations
+- **PaperRepository**: Neon PostgreSQL integration with upsert operations
 - **Airflow DAGs**: Automated daily ingestion workflows
 
 3. **PDF Processing Pipeline**
@@ -34,7 +34,7 @@ A comprehensive Jupyter notebook that guides students through:
    - Handle parsing failures gracefully with fallback mechanisms
 
 4. **Database Integration**
-   - Store paper metadata and content in PostgreSQL
+   - Store paper metadata and content in Neon PostgreSQL
    - Implement upsert logic to avoid duplicates
    - Test retrieval and query operations
 
@@ -66,13 +66,13 @@ By completing this phase's materials, students will:
 - **arXiv API Client** - Fetches CS.AI papers with intelligent rate limiting
 - **PDF Parser (Docling)** - Extracts structured content from scientific PDFs
 - **Metadata Fetcher** - Orchestrates the complete processing pipeline
-- **Database Repository** - Handles PostgreSQL operations with SQLAlchemy
+- **Database Repository** - Handles Neon PostgreSQL operations with SQLAlchemy
 
 ### Infrastructure Dependencies (From Phase 1)
-- **PostgreSQL 16** - Paper metadata and content storage
+- **Neon PostgreSQL** - Cloud-hosted paper metadata and content storage
 - **FastAPI** - REST API endpoints for paper retrieval
 - **Apache Airflow** - Workflow orchestration and scheduling
-- **Docker Compose** - Service orchestration and networking
+- **Docker Compose** - Service orchestration and networking (4 containers)
 
 ## Pipeline Architecture
 
@@ -89,7 +89,7 @@ arXiv Search Query → Rate Limited API Calls → PDF Downloads → Docling Pars
 **Phase 2 System Capabilities:**
 - **arXiv API**: ~20 papers/minute (respecting 3-second rate limits)
 - **PDF Processing**: 2-5 seconds per paper (depends on PDF complexity)
-- **Database Storage**: ~100 papers/second (batch operations)
+- **Database Storage**: ~100 papers/second (batch operations via Neon)
 - **Error Handling**: Graceful continuation despite individual failures
 - **Success Rates**: 95%+ for paper fetching, 80-90% for PDF parsing
 
@@ -119,19 +119,17 @@ This material is designed for:
 
 ## Important Notes
 
-### Fresh Container Build Required
+### Fresh Container Build
 Phase 2 requires rebuilding containers with new dependencies:
 
 ```bash
-# Shutdown and rebuild (REQUIRED for Phase 2)
+# Rebuild containers (REQUIRED for Phase 2)
 docker compose down
-docker compose up --build
-
-# This ensures:
-# - New Python dependencies (docling, arxiv client)
-# - Updated Airflow DAGs
-# - Fresh service configurations
+docker compose up --build -d
 ```
+
+**Note**: `docker compose down -v` removes local volumes (OpenSearch data, Airflow logs)
+but does **not** affect Neon PostgreSQL — that data is cloud-hosted and persists.
 
 ### PDF Processing Expectations
 - Not all PDFs parse successfully (expected behavior)
@@ -163,7 +161,7 @@ After completing Phase 2, you will be ready to:
 - arXiv API client fetches papers with proper rate limiting
 - PDF download and caching works reliably
 - Docling parser extracts structured content from scientific papers
-- Database stores complete paper metadata with relationships
+- Neon PostgreSQL stores complete paper metadata with relationships
 - Complete pipeline processes papers end-to-end with error handling
 - Airflow DAGs are configured and ready for automation
 - All components demonstrate production-grade error handling and monitoring

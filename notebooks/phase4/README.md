@@ -170,12 +170,12 @@ SECTION_BASED = True    # Use document structure when available
 
 **Required Variables**:
 ```bash
-# Core Services
-POSTGRES_DATABASE_URL=postgresql+psycopg2://rag_user:rag_password@postgres:5432/rag_db
-OPENSEARCH__HOST=http://opensearch:9200
+# Neon PostgreSQL (cloud-hosted)
+POSTGRES_DATABASE_URL=postgresql+psycopg2://<user>:<pass>@<host>.neon.tech/neondb?sslmode=require
+OPENSEARCH__HOST=http://localhost:9200
 
 # Embeddings (Required for Hybrid Search)
-JINA_API_KEY=jina_your_api_key_here
+JINA_API_KEY=jina_...
 
 # Chunking Configuration
 CHUNKING__CHUNK_SIZE=600
@@ -256,7 +256,7 @@ OPENSEARCH__VECTOR_DIMENSION=1024
 ```yaml
 # Recommended minimum for production
 opensearch:
-  image: opensearchproject/opensearch:2.19.0
+  image: opensearchproject/opensearch:2.19.5
   environment:
     - cluster.name=rag-cluster
     - node.name=rag-node-1
@@ -368,8 +368,8 @@ curl -X POST "http://localhost:8000/api/v1/hybrid-search/" \
 
 Phase 4 provides the search foundation for Phase 5's LLM integration:
 
-1. **LLM Integration**: Connect Ollama for answer generation
-2. **RAG Pipeline**: Query → Search → Context → Generate → Response  
+1. **LLM Integration**: Connect OpenAI `gpt-4o-mini` for answer generation
+2. **RAG Pipeline**: Query → Search → Context → Generate → Response
 3. **Context Management**: Optimize retrieved chunks for LLM input
 4. **Answer Quality**: Implement citation and source attribution
 5. **Conversation Memory**: Support multi-turn conversations
