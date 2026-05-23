@@ -35,6 +35,8 @@ RUN apt-get update && \
         poppler-utils \
         tesseract-ocr \
     && update-ca-certificates \
+        libgl1 \
+        libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 # ── airflow user ──────────────────────────────────────────────────────────────

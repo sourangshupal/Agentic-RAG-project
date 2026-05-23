@@ -100,6 +100,10 @@ services:
       # entrypoint.sh runs `airflow sync-perm` once before the webserver starts,
       # so permissions are already in Neon when gunicorn boots — no sync needed.
       - AIRFLOW__WEBSERVER__UPDATE_FAB_PERMS=False
+      # Enable Basic Auth for the REST API (default is session/cookie auth which
+      # only works in a browser). Without this, GET /api/v1/dags returns 401
+      # even with correct credentials.
+      - AIRFLOW__API__AUTH_BACKENDS=airflow.api.auth.backend.basic_auth
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - airflow_logs:/opt/airflow/logs

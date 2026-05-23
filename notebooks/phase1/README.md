@@ -22,24 +22,28 @@ A comprehensive Jupyter notebook that guides students through:
 </p>
 
 **Architecture Overview:**
-- **FastAPI** (Port 8000): REST API with async support and automatic documentation
-- **PostgreSQL 16** (Port 5432): Primary database for paper metadata and content storage
-- **OpenSearch 2.19** (Ports 9200, 5601): Hybrid search engine with management dashboards
-- **Apache Airflow 3.0** (Port 8080): Workflow orchestration with DAGs and PostgreSQL backend
-- **Ollama** (Port 11434): Local LLM server for future RAG implementation
-- **Docker Network**: All services communicate via `rag-network` with persistent volumes
+
+| Component | Type | Access |
+|-----------|------|--------|
+| **FastAPI** (Port 8000) | Local container | REST API with async support and automatic documentation |
+| **OpenSearch 2.19** (Ports 9200, 5601) | Local container | Hybrid search engine with Dashboards UI |
+| **Apache Airflow 3.0** (Port 8080) | Local container | Workflow orchestration with DAGs |
+| **Neon PostgreSQL** | Cloud (serverless) | Paper metadata and content storage |
+| **Upstash Redis** | Cloud (serverless) | Response caching (6-hour TTL) |
+| **OpenAI API** | Cloud | LLM generation (`gpt-4o-mini`) |
+| **Langfuse Cloud** | Cloud | Observability and tracing |
 
 3. **Service-by-Service Setup**
-   - PostgreSQL database for paper metadata storage
-   - OpenSearch for full-text search capabilities
+   - Neon PostgreSQL for paper metadata storage
+   - OpenSearch for full-text and vector search capabilities
    - Apache Airflow for workflow automation
-   - Ollama for local LLM inference
+   - OpenAI API for LLM inference
    - FastAPI for REST API endpoints
 
 4. **Verification and Testing**
-   - Automated health checks for all services
-   - Step-by-step verification procedures
-   - Modular Ollama testing (4 focused test cells)
+   - Automated health checks for all 4 local containers
+   - Cloud service connectivity verification
+   - Neon PostgreSQL table count check (48 Airflow metadata tables)
    - Common troubleshooting scenarios and solutions
 
 ## Learning Objectives
@@ -48,39 +52,50 @@ By completing this phase's materials, students will:
 
 - Understand containerization and Docker Compose orchestration
 - Learn how to set up a production-grade infrastructure stack
-- Gain experience with database design and API development
+- Gain experience with cloud-managed database and caching services
 - Master troubleshooting techniques for multi-service applications
 - Learn direct HTTP API testing vs service abstraction layers
 - Build confidence working with professional development tools
 
-## Ollama Testing (Simplified for Phase 1)
+## Cloud Services Setup
 
-The notebook includes modular Ollama testing broken into focused cells:
+Phase 1 uses four cloud-managed services in place of local containers. Sign up (all have free tiers):
 
-- **Test 3A**: Check available models
-- **Test 3B**: Simple model testing (if models installed) 
-- **Test 3C**: Performance analysis
-- **Test 3D**: Learning notes and setup commands
+### Neon PostgreSQL
+1. Sign up at https://console.neon.tech
+2. Create a project → Connection Details → SQLAlchemy tab
+3. Copy the `postgresql+psycopg2://` URL to `.env`:
+   ```
+   POSTGRES_DATABASE_URL=postgresql+psycopg2://<user>:<pass>@<host>.neon.tech/neondb?sslmode=require
+   ```
 
-### Easy Model Installation (Optional for Phase 1)
+### OpenAI API
+1. Create account at https://platform.openai.com
+2. Go to API Keys → Create key
+3. Add to `.env`:
+   ```
+   OPENAI_API_KEY=sk-proj-...
+   OPENAI_MODEL=gpt-4o-mini
+   ```
 
-```bash
-# Using Makefile (recommended)
-make ollama-pull MODEL=llama3.2:1b
-make ollama-test MODEL=llama3.2:1b
+### Upstash Redis
+1. Sign up at https://console.upstash.com
+2. Create database → go to **TCP tab** (not REST)
+3. Copy the `rediss://` URL to `.env`:
+   ```
+   REDIS__URL=rediss://default:<token>@<host>.upstash.io:6379
+   REDIS__TTL_HOURS=6
+   ```
 
-# Direct HTTP calls for learning
-curl -X POST http://localhost:11434/api/pull -d '{"name":"llama3.2:1b"}'
-curl -X POST http://localhost:11434/api/generate -d '{"model":"llama3.2:1b","prompt":"Hello","stream":false}'
-```
-
-### Recommended Models for Course
-
-- **llama3.2:1b** (1.2GB) - Fast, good for testing
-- **llama3.2:3b** (2.0GB) - Balance of speed/quality
-- **llama3.1:8b** (4.7GB) - Better quality, slower
-
-**Note**: No models are required for Phase 1 - service health check works without them.
+### Langfuse Cloud
+1. Sign up at https://cloud.langfuse.com
+2. Create project → Settings → API Keys
+3. Add to `.env` (**double underscore** required):
+   ```
+   LANGFUSE__PUBLIC_KEY=pk-lf-...
+   LANGFUSE__SECRET_KEY=sk-lf-...
+   LANGFUSE__HOST=https://us.cloud.langfuse.com
+   ```
 
 ## Target Audience
 
@@ -92,8 +107,8 @@ This material is designed for:
 
 ## Time Commitment
 
-- **Setup**: 2-3 hours (including software installation and downloads)
-- **Notebook completion**: 1 hours
+- **Setup**: 2-3 hours (including software installation and cloud account setup)
+- **Notebook completion**: 1 hour
 - **Total**: 2-4 hours
 
 ## 📖 Additional Resources

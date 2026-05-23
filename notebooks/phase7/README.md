@@ -162,7 +162,7 @@ jupyter notebook notebooks/phase7/phase7_agentic_rag.ipynb
 
 - ✅ **SOLID** - Single responsibility, dependency inversion, composition
 - ✅ **KISS** - Simple nodes (<30 lines), clear logic
-- ✅ **DRY** - Reused existing services (OpenSearch, Ollama, Jina)
+- ✅ **DRY** - Reused existing services (OpenSearch, OpenAI, Jina)
 - ✅ **YAGNI** - Only implemented what's needed
 - ✅ **Explicit** - Type hints, docstrings, clear names
 - ✅ **2025 Best Practices** - MessagesState, ToolNode, tools_condition
@@ -205,7 +205,7 @@ Cache Check (Redis)
         ↓
 Hybrid Search (OpenSearch BM25 + Vector)
         ↓
-LLM Generation (Ollama)
+LLM Generation (OpenAI gpt-4o-mini)
         ↓
 Cache Store (Redis)
         ↓
@@ -414,7 +414,7 @@ Bot: ⚙️ Your Settings
 
      *Search Mode:* HYBRID
      *Results per query:* 3 papers
-     *Model:* llama3.2:1b
+     *Model:* gpt-4o-mini
      *Categories:* All
 
      [Interactive buttons appear]:
@@ -474,7 +474,7 @@ Bot: ❌ Error processing your question:
 - [ ] **Interactive buttons work** - Can click inline keyboard buttons
 - [ ] **Long responses split correctly** - Messages don't exceed Telegram limit
 - [ ] **Markdown formatting works** - Bold, italics, links render correctly
-- [ ] **Langfuse shows traces** - Check http://localhost:3000 for Telegram events
+- [ ] **Langfuse shows traces** - Check https://us.cloud.langfuse.com for Telegram events
 - [ ] **Typing indicator shows** - "Bot is typing..." appears during processing
 - [ ] **Error messages are friendly** - No stack traces exposed to user
 
@@ -533,7 +533,7 @@ TELEGRAM__RATE_LIMIT_MESSAGES_PER_MINUTE=20
 # Default User Preferences
 TELEGRAM__DEFAULT_TOP_K=3
 TELEGRAM__DEFAULT_USE_HYBRID=true
-TELEGRAM__DEFAULT_MODEL=llama3.2:1b
+TELEGRAM__DEFAULT_MODEL=gpt-4o-mini
 ```
 
 ### User Settings (Customizable per User)
@@ -555,10 +555,10 @@ The Telegram bot integrates with all existing Phase 1-6 services:
 
 1. **OpenSearch** - Hybrid search for relevant papers
 2. **Jina Embeddings** - Semantic search capabilities
-3. **Ollama LLM** - Answer generation
-4. **Redis Cache** - 150-400x speedup for repeated queries
-5. **Langfuse** - Complete tracing of Telegram interactions
-6. **PostgreSQL** - Paper metadata (via OpenSearch)
+3. **OpenAI API** - Answer generation (`gpt-4o-mini`)
+4. **Upstash Redis** - 150-400x speedup for repeated queries
+5. **Langfuse Cloud** - Complete tracing of Telegram interactions
+6. **Neon PostgreSQL** - Paper metadata (via OpenSearch)
 
 ### Message Flow
 
@@ -575,7 +575,7 @@ async def handle_message(update, context):
         a. Generate embedding (Jina)
         b. Search papers (OpenSearch)
         c. Build prompt with context
-        d. Generate answer (Ollama)
+        d. Generate answer (OpenAI gpt-4o-mini)
         e. Cache result (Redis)
         f. Trace interaction (Langfuse)
     8. Format response (Markdown)
@@ -607,7 +607,7 @@ Built-in rate limiting protects against abuse:
 |-------|----------|
 | **Bot doesn't respond** | Check `TELEGRAM__ENABLED=true` and valid `BOT_TOKEN` |
 | **"Unauthorized" error** | Bot token is invalid, regenerate with @BotFather |
-| **Bot responds but no answers** | Check OpenSearch, Ollama, and embeddings services |
+| **Bot responds but no answers** | Check OpenSearch, OpenAI API key, and Jina embeddings service |
 | **Slow responses** | First query always slow, subsequent queries use cache |
 | **Markdown formatting broken** | Bot automatically falls back to plain text |
 | **Can't find bot** | Ensure bot username is correct, ends with "bot" |
@@ -650,7 +650,8 @@ docker compose logs api
 **Responses too slow:**
 ```bash
 # 1. Check cache is working
-docker exec rag-redis redis-cli ping  # Should return PONG
+# Check Upstash Redis via API health (no local redis-cli available)
+curl http://localhost:8000/api/v1/health | grep -i redis
 
 # 2. Check cache hit rate
 # Look for ⚡ indicator in bot responses
@@ -824,10 +825,10 @@ A: Yes! Just run `python src/main.py` after installing dependencies with `uv syn
 A: Update `TELEGRAM__BOT_TOKEN` in `.env` and restart: `docker compose restart api`
 
 **Q: Can I customize the bot's personality?**
-A: Yes! Edit prompts in `src/services/ollama/prompts/` and message templates in `src/services/telegram/formatters.py`.
+A: Yes! Edit system prompts in `src/services/agents/` and message templates in `src/services/telegram/formatters.py`.
 
 **Q: Does this work with other LLM models?**
-A: Yes! Change `OLLAMA_MODEL` or use `/settings` command to select different Ollama models.
+A: Yes! Change `OPENAI_MODEL` in `.env` (e.g., `gpt-4o` for higher quality) or use `/settings` command.
 
 ---
 
