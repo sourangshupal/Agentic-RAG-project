@@ -243,13 +243,15 @@ class LangfuseTracer:
             return
 
         try:
-            generation = self.client.generation(
+            with self.client.start_as_current_observation(
                 name=name,
+                as_type="generation",
                 model=model,
                 input=input_data,
                 metadata=metadata or {},
-            )
-            yield generation
+            ) as generation:
+                yield generation
+            self.client.flush()
         except Exception as e:
             logger.error(f"Error creating generation span: {e}")
             yield None
@@ -289,12 +291,14 @@ class LangfuseTracer:
             return
 
         try:
-            span = self.client.span(
+            with self.client.start_as_current_observation(
                 name=name,
+                as_type="span",
                 input=input_data,
                 metadata=metadata or {},
-            )
-            yield span
+            ) as span:
+                yield span
+            self.client.flush()
         except Exception as e:
             logger.error(f"Error creating span: {e}")
             yield None

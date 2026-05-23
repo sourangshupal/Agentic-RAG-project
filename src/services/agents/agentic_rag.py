@@ -197,9 +197,10 @@ class AgenticRAGService:
                 "use_hybrid": self.graph_config.use_hybrid,
                 "model": model_to_use,
             }
-            # V3 SDK: Use start_as_current_span - will be used with 'with' statement
-            trace = self.langfuse_tracer.client.start_as_current_span(
+            # V4 SDK: start_as_current_observation replaces start_as_current_span
+            trace = self.langfuse_tracer.client.start_as_current_observation(
                 name="agentic_rag_request",
+                as_type="span",
             )
 
         # Use proper context manager pattern

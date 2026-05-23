@@ -109,11 +109,14 @@ class RAGTracer:
         if not self._enabled:
             yield None
             return
-        with self.tracer.start_span(
-            name="llm_generation",
-            input_data={"model": model, "prompt_length": len(prompt), "prompt": prompt},
-        ) as span:
-            yield span
+        try:
+            with self.tracer.start_span(
+                name="llm_generation",
+                input_data={"model": model, "prompt_length": len(prompt), "prompt": prompt},
+            ) as span:
+                yield span
+        except Exception:
+            yield None
 
     def end_generation(self, span, response: str, model: str):
         """End generation span with response."""
