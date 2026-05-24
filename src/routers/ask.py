@@ -145,9 +145,14 @@ async def ask_question(
                 rag_response = await llm_client.generate_rag_answer(query=request.query, chunks=chunks, model=request.model)
                 answer = rag_response.get("answer", "Unable to generate answer")
                 rag_tracer.end_generation(gen_span, answer, request.model)
-                # Pass token usage so Langfuse can calculate cost
-                if gen_span and rag_response.get("usage"):
-                    langfuse_tracer.update_generation(gen_span, output=answer, usage_metadata=rag_response["usage"])
+                # Pass token usage + model so Langfuse can calculate cost
+                if rag_response.get("usage"):
+                    langfuse_tracer.update_generation(
+                        gen_span,
+                        output=answer,
+                        usage_metadata=rag_response["usage"],
+                        model=request.model,
+                    )
 
             # Prepare response
             response = AskResponse(

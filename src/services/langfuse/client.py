@@ -371,41 +371,27 @@ class LangfuseTracer:
         output: Any,
         usage_metadata: Optional[Dict[str, Any]] = None,
         completion_start_time: Optional[float] = None,
+        model: Optional[str] = None,
     ):
-        """
-        Update a generation span with output and usage metrics.
-
-        Args:
-            generation: Generation object from start_generation()
-            output: LLM output/response
-            usage_metadata: Token usage and timing info
-                - prompt_tokens: int
-                - completion_tokens: int
-                - total_tokens: int
-                - latency_ms: float
-            completion_start_time: Optional start time for latency calculation
-        """
-        if not generation:
+        """Update a generation span with output and token usage for cost calculation."""
+        if not self.client:
             return
 
         try:
-            update_data = {"output": output}
+            # v4: use update_current_generation with usage_details for cost tracking
+            update_kwargs: Dict[str, Any] = {"output": output}
 
-            if usage_metadata:
-                # Add usage metadata following Langfuse format
-                if "prompt_tokens" in usage_metadata:
-                    update_data["usage"] = {
-                        "input": usage_metadata.get("prompt_tokens", 0),
-                        "output": usage_metadata.get("completion_tokens", 0),
-                        "total": usage_metadata.get("total_tokens", 0),
-                    }
+            if usage_metadata and "prompt_tokens" in usage_metadata:
+                update_kwargs["usage_details"] = {
+                    "input": usage_metadata.get("prompt_tokens", 0),
+                    "output": usage_metadata.get("completion_tokens", 0),
+                    "total": usage_metadata.get("total_tokens", 0),
+                }
 
-                # Add timing metadata
-                if "latency_ms" in usage_metadata:
-                    update_data["metadata"] = update_data.get("metadata", {})
-                    update_data["metadata"]["latency_ms"] = usage_metadata["latency_ms"]
+            if model:
+                update_kwargs["model"] = model
 
-            generation.update(**update_data)
+            self.client.update_current_generation(**update_kwargs)
         except Exception as e:
             logger.error(f"Error updating generation: {e}")
 
