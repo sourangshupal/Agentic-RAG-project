@@ -395,6 +395,17 @@ class LangfuseTracer:
         except Exception as e:
             logger.error(f"Error updating generation: {e}")
 
+    def end_span(
+        self,
+        span,
+        output: Optional[Any] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        level: Optional[str] = None,
+        status_message: Optional[str] = None,
+    ):
+        """Alias for update_span — called by agent nodes to close a span with output."""
+        self.update_span(span, output=output, metadata=metadata, level=level, status_message=status_message)
+
     def update_span(
         self,
         span,

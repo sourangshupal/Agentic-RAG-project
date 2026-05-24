@@ -181,5 +181,11 @@ test_data/
 # Notebook update guides (local dev reference only)
 notebooks/**/NOTEBOOK_UPDATES.md
 
+# Personal tracing reference (not for repo)
+TRACING.md
+
+# Personal ingestion reference (not for repo)
+airflow/dags/arxiv_ingestion/INGESTION.md
+
 
 
