@@ -24,8 +24,14 @@ class RAGTracer:
             with self.tracer.start_span(
                 name="rag_request",
                 input_data={"query": query, "user_id": user_id},
-                metadata={"simplified_tracing": True, "session_id": session_id, "user_id": user_id},
+                metadata={"simplified_tracing": True},
             ) as trace:
+                # Set user_id and session_id as OTel span attributes (Langfuse v4)
+                if user_id or session_id:
+                    self.tracer.set_trace_user_session(
+                        user_id=user_id or "anonymous",
+                        session_id=session_id or "default",
+                    )
                 yield trace
         finally:
             self.tracer.flush()
