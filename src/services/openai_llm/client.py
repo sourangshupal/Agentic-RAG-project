@@ -99,11 +99,17 @@ class OpenAILLMClient:
 
             citations = list(set(chunk.get("arxiv_id") for chunk in chunks if chunk.get("arxiv_id")))
 
+            usage = response.usage
             return {
                 "answer": answer,
                 "sources": sources,
                 "confidence": "high",
                 "citations": citations[:5],
+                "usage": {
+                    "prompt_tokens": usage.prompt_tokens if usage else 0,
+                    "completion_tokens": usage.completion_tokens if usage else 0,
+                    "total_tokens": usage.total_tokens if usage else 0,
+                },
             }
 
         except openai.AuthenticationError as e:
