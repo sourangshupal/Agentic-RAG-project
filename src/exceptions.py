@@ -94,6 +94,22 @@ class OpenAITimeoutError(OpenAILLMException):
     """Exception raised when the OpenAI API times out."""
 
 
+class BedrockLLMException(LLMException):
+    """Exception raised for AWS Bedrock API errors."""
+
+
+class BedrockConnectionError(BedrockLLMException):
+    """Exception raised when cannot reach the AWS Bedrock API."""
+
+
+class BedrockTimeoutError(BedrockLLMException):
+    """Exception raised when the AWS Bedrock API times out."""
+
+
+class BedrockGuardrailsException(Exception):
+    """Exception raised for AWS Bedrock Guardrails errors."""
+
+
 # General application exceptions
 class ConfigurationError(Exception):
     """Exception raised when configuration is invalid."""

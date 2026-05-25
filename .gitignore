@@ -187,5 +187,8 @@ TRACING.md
 # Personal ingestion reference (not for repo)
 airflow/dags/arxiv_ingestion/INGESTION.md
 
+# MCP integration demo guide (local reference only)
+mcpintegration.md
+
 
 

@@ -2,11 +2,11 @@ import logging
 import time
 from typing import Dict, Literal
 
+import logfire
 from langgraph.runtime import Runtime
 
 from ..context import Context
 from ..models import GuardrailScoring
-from ..prompts import GUARDRAIL_PROMPT
 from ..state import AgentState
 from .utils import get_latest_query
 
@@ -15,9 +15,6 @@ logger = logging.getLogger(__name__)
 
 def continue_after_guardrail(state: AgentState, runtime: Runtime[Context]) -> Literal["continue", "out_of_scope"]:
     """Determine whether to continue or reject based on guardrail results.
-
-    This function checks the guardrail_result score against a threshold.
-    If the score is above threshold, continue; otherwise route to out_of_scope.
 
     :param state: Current agent state with guardrail results
     :param runtime: Runtime context containing guardrail threshold
@@ -32,18 +29,21 @@ def continue_after_guardrail(state: AgentState, runtime: Runtime[Context]) -> Li
     threshold = runtime.context.guardrail_threshold
 
     logger.info(f"Guardrail score: {score}, threshold: {threshold}")
-
     return "continue" if score >= threshold else "out_of_scope"
 
 
+@logfire.instrument("node:guardrail", extract_args=False)
 async def ainvoke_guardrail_step(
     state: AgentState,
     runtime: Runtime[Context],
 ) -> Dict[str, GuardrailScoring]:
-    """Asynchronously invoke the guardrail validation step using LLM.
+    """Asynchronously invoke the guardrail validation step.
 
-    This function evaluates whether the user query is within scope
-    (CS/AI/ML research papers) and assigns a score using an LLM.
+    Uses AWS Bedrock Guardrails when guardrails_service is configured.
+    Falls back to fail-open (allow all) when Bedrock is not configured.
+    Guardrail result is mapped to GuardrailScoring for state compatibility:
+      - allowed → score=100
+      - blocked → score=0
 
     :param state: Current agent state
     :param runtime: Runtime context
@@ -52,11 +52,9 @@ async def ainvoke_guardrail_step(
     logger.info("NODE: guardrail_validation")
     start_time = time.time()
 
-    # Get the latest user query
     query = get_latest_query(state["messages"])
     logger.debug(f"Evaluating query: {query[:100]}...")
 
-    # Create span for guardrail validation (v2 SDK)
     span = None
     if runtime.context.langfuse_enabled and runtime.context.trace:
         try:
@@ -66,38 +64,29 @@ async def ainvoke_guardrail_step(
                 input_data={
                     "query": query,
                     "threshold": runtime.context.guardrail_threshold,
+                    "guardrails_provider": "bedrock" if runtime.context.guardrails_service else "none",
                 },
-                metadata={
-                    "node": "guardrail",
-                    "model": runtime.context.model_name,
-                },
+                metadata={"node": "guardrail"},
             )
-            logger.debug("Created Langfuse span for guardrail validation (v2 SDK)")
         except Exception as e:
-            logger.warning(f"Failed to create span for guardrail validation: {e}")
+            logger.warning(f"Failed to create Langfuse span for guardrail: {e}")
 
     try:
-        # Create guardrail prompt from template
-        guardrail_prompt = GUARDRAIL_PROMPT.format(question=query)
+        if runtime.context.guardrails_service:
+            result = await runtime.context.guardrails_service.check_input(query)
+            score = 100 if result.allowed else 0
+            reason = result.reason
+            logger.info(f"Bedrock guardrail: action={result.action}, allowed={result.allowed}, reason={reason}")
+        else:
+            # No guardrails configured — fail-open
+            score = 100
+            reason = "No guardrail service configured — passing through"
+            logger.debug(reason)
 
-        # Get LLM from runtime context
-        llm = runtime.context.llm_client.get_langchain_model(
-            model=runtime.context.model_name,
-            temperature=0.0,
-        )
+        response = GuardrailScoring(score=score, reason=reason)
 
-        # Create structured output LLM for guardrail scoring
-        structured_llm = llm.with_structured_output(GuardrailScoring)
-
-        # Invoke LLM for guardrail evaluation
-        logger.info("Invoking LLM for guardrail validation")
-        response = await structured_llm.ainvoke(guardrail_prompt)
-
-        logger.info(f"Guardrail result - Score: {response.score}, Reason: {response.reason}")
-
-        # Update span with successful result
         if span:
-            execution_time = (time.time() - start_time) * 1000  # Convert to ms
+            execution_time = (time.time() - start_time) * 1000
             runtime.context.langfuse_tracer.end_span(
                 span,
                 output={
@@ -105,22 +94,15 @@ async def ainvoke_guardrail_step(
                     "reason": response.reason,
                     "decision": "continue" if response.score >= runtime.context.guardrail_threshold else "out_of_scope",
                 },
-                metadata={
-                    "execution_time_ms": execution_time,
-                    "threshold": runtime.context.guardrail_threshold,
-                },
+                metadata={"execution_time_ms": execution_time},
             )
 
     except Exception as e:
-        logger.error(f"LLM guardrail validation failed: {e}, falling back to default")
-
-        # Fallback: fail open — let query through when LLM can't evaluate
+        logger.error(f"Guardrail validation failed: {e}, falling back to allow")
         response = GuardrailScoring(
             score=100,
-            reason=f"LLM validation failed, defaulting to allow: {str(e)}"
+            reason=f"Guardrail check failed (fail-open): {str(e)}",
         )
-
-        # Update span with error
         if span:
             execution_time = (time.time() - start_time) * 1000
             runtime.context.langfuse_tracer.update_span(

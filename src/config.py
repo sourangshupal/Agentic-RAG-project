@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 from typing import List, Literal, Optional
 
-from pydantic import Field, field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -151,6 +151,53 @@ class TelegramSettings(BaseConfigSettings):
     enabled: bool = False
 
 
+class MCPSettings(BaseConfigSettings):
+    model_config = SettingsConfigDict(
+        env_file=[".env", str(ENV_FILE_PATH)],
+        env_prefix="MCP__",
+        extra="ignore",
+        frozen=True,
+        case_sensitive=False,
+    )
+
+    enabled: bool = True
+    path: str = "/mcp"
+
+
+class BedrockSettings(BaseConfigSettings):
+    model_config = SettingsConfigDict(
+        env_file=[".env", str(ENV_FILE_PATH)],
+        env_prefix="BEDROCK__",
+        extra="ignore",
+        frozen=True,
+        case_sensitive=False,
+    )
+
+    aws_access_key_id: str = ""
+    aws_secret_access_key: SecretStr = SecretStr("")
+    aws_region: str = "us-east-1"
+    model_id: str = "meta.llama3-1-70b-instruct-v1:0"
+    guardrail_id: str = ""
+    guardrail_version: str = "DRAFT"
+
+
+class LogfireSettings(BaseConfigSettings):
+    model_config = SettingsConfigDict(
+        env_file=[".env", str(ENV_FILE_PATH)],
+        env_prefix="LOGFIRE__",
+        extra="ignore",
+        frozen=True,
+        case_sensitive=False,
+    )
+
+    enabled: bool = True
+    token: str = ""
+    service_name: str = "arxiv-rag"
+    environment: str = "development"
+    # "if-token-present" | "true" | "false"
+    send_to_logfire: str = "if-token-present"
+
+
 class Settings(BaseConfigSettings):
     app_version: str = "0.1.0"
     debug: bool = True
@@ -166,6 +213,9 @@ class Settings(BaseConfigSettings):
     openai_model: str = "gpt-4o-mini"
     openai_timeout: int = 300
 
+    # LLM provider: "openai" or "bedrock"
+    provider: str = "openai"
+
     # Jina AI embeddings configuration
     jina_api_key: str = ""
 
@@ -176,6 +226,9 @@ class Settings(BaseConfigSettings):
     langfuse: LangfuseSettings = Field(default_factory=LangfuseSettings)
     redis: RedisSettings = Field(default_factory=RedisSettings)
     telegram: TelegramSettings = Field(default_factory=TelegramSettings)
+    mcp: MCPSettings = Field(default_factory=MCPSettings)
+    logfire: LogfireSettings = Field(default_factory=LogfireSettings)
+    bedrock: BedrockSettings = Field(default_factory=BedrockSettings)
 
     @field_validator("postgres_database_url")
     @classmethod

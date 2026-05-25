@@ -2,6 +2,7 @@ import logging
 import time
 from typing import Dict, Union
 
+import logfire
 from langchain_core.messages import AIMessage
 from langgraph.runtime import Runtime
 
@@ -12,6 +13,7 @@ from .utils import get_latest_query
 logger = logging.getLogger(__name__)
 
 
+@logfire.instrument("node:retrieve", extract_args=False)
 async def ainvoke_retrieve_step(
     state: AgentState,
     runtime: Runtime[Context],

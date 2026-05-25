@@ -2,6 +2,8 @@ import logging
 import time
 from typing import Dict
 
+import logfire
+
 from langgraph.runtime import Runtime
 
 from ..context import Context
@@ -13,6 +15,7 @@ from .utils import extract_sources_from_tool_messages, get_latest_context, get_l
 logger = logging.getLogger(__name__)
 
 
+@logfire.instrument("node:grade_documents", extract_args=False)
 async def ainvoke_grade_documents_step(
     state: AgentState,
     runtime: Runtime[Context],

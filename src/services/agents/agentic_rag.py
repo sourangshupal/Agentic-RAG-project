@@ -6,9 +6,10 @@ from langchain_core.messages import HumanMessage
 from langfuse.langchain import CallbackHandler
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
+from src.services.bedrock_guardrails.service import BedrockGuardrailsService
 from src.services.embeddings.jina_client import JinaEmbeddingsClient
 from src.services.langfuse.client import LangfuseTracer
-from src.services.openai_llm.client import OpenAILLMClient
+from src.services.llm_client_protocol import LLMClientProtocol
 from src.services.opensearch.client import OpenSearchClient
 
 from .config import GraphConfig
@@ -18,6 +19,7 @@ from .nodes import (
     ainvoke_grade_documents_step,
     ainvoke_guardrail_step,
     ainvoke_out_of_scope_step,
+    ainvoke_output_guardrail_step,
     ainvoke_retrieve_step,
     ainvoke_rewrite_query_step,
     continue_after_guardrail,
@@ -41,23 +43,26 @@ class AgenticRAGService:
     def __init__(
         self,
         opensearch_client: OpenSearchClient,
-        llm_client: OpenAILLMClient,
+        llm_client: LLMClientProtocol,
         embeddings_client: JinaEmbeddingsClient,
         langfuse_tracer: Optional[LangfuseTracer] = None,
+        guardrails_service: Optional[BedrockGuardrailsService] = None,
         graph_config: Optional[GraphConfig] = None,
     ):
         """Initialize agentic RAG service.
 
         :param opensearch_client: Client for document search
-        :param llm_client: OpenAI LLM client for generation
+        :param llm_client: LLM client (OpenAI or Bedrock)
         :param embeddings_client: Client for embeddings
         :param langfuse_tracer: Optional Langfuse tracer
+        :param guardrails_service: Optional Bedrock Guardrails service
         :param graph_config: Configuration for graph execution
         """
         self.opensearch = opensearch_client
         self.llm = llm_client
         self.embeddings = embeddings_client
         self.langfuse_tracer = langfuse_tracer
+        self.guardrails_service = guardrails_service
         self.graph_config = graph_config or GraphConfig()
 
         logger.info("Initializing AgenticRAGService with configuration:")
@@ -102,6 +107,7 @@ class AgenticRAGService:
         workflow.add_node("grade_documents", ainvoke_grade_documents_step)
         workflow.add_node("rewrite_query", ainvoke_rewrite_query_step)
         workflow.add_node("generate_answer", ainvoke_generate_answer_step)
+        workflow.add_node("output_guardrail", ainvoke_output_guardrail_step)
 
         # Add edges
         logger.info("Configuring graph edges and routing logic")
@@ -148,8 +154,9 @@ class AgenticRAGService:
         # After rewriting → try retrieve again
         workflow.add_edge("rewrite_query", "retrieve")
 
-        # After answer generation → done
-        workflow.add_edge("generate_answer", END)
+        # After answer generation → output guardrail → done
+        workflow.add_edge("generate_answer", "output_guardrail")
+        workflow.add_edge("output_guardrail", END)
 
         # Compile graph
         logger.info("Compiling LangGraph workflow")
@@ -254,6 +261,7 @@ class AgenticRAGService:
                 opensearch_client=self.opensearch,
                 embeddings_client=self.embeddings,
                 langfuse_tracer=self.langfuse_tracer,
+                guardrails_service=self.guardrails_service,
                 trace=trace,
                 langfuse_enabled=self.langfuse_tracer is not None and self.langfuse_tracer.client is not None,
                 model_name=model_to_use,

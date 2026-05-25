@@ -2,6 +2,8 @@ import logging
 import time
 from typing import Dict, List
 
+import logfire
+
 from langchain_core.messages import AIMessage
 from langgraph.runtime import Runtime
 
@@ -13,6 +15,7 @@ from .utils import get_latest_context, get_latest_query
 logger = logging.getLogger(__name__)
 
 
+@logfire.instrument("node:generate_answer", extract_args=False)
 async def ainvoke_generate_answer_step(
     state: AgentState,
     runtime: Runtime[Context],
