@@ -30,6 +30,7 @@ Follow every step in order. Commands are copy-paste ready.
 ## 1. Prerequisites — Install Tools
 
 Install these tools on your local machine before starting.
+Pick the section that matches your operating system.
 
 ### macOS
 
@@ -48,8 +49,8 @@ brew install weaveworks/tap/eksctl
 brew install kubectl
 
 # Verify all tools are installed
-aws --version        # should print: aws-cli/2.x.x
-eksctl version       # should print: 0.x.x
+aws --version             # should print: aws-cli/2.x.x
+eksctl version            # should print: 0.x.x
 kubectl version --client  # should print: v1.31.x
 ```
 
@@ -69,7 +70,113 @@ sudo mv /tmp/eksctl /usr/local/bin
 # kubectl
 curl -LO "https://dl.k8s.io/release/$(curl -sL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
 chmod +x kubectl && sudo mv kubectl /usr/local/bin
+
+# Verify all tools are installed
+aws --version
+eksctl version
+kubectl version --client
 ```
+
+### Windows
+
+> **Recommended:** Use **Windows Terminal** with **PowerShell 7+** for all commands below.
+> Download Windows Terminal from the Microsoft Store if you don't have it.
+> PowerShell 7: https://github.com/PowerShell/PowerShell/releases/latest
+
+#### Option A — Winget (Windows 11 / Windows 10 with App Installer)
+
+Open **Windows Terminal as Administrator** and run:
+
+```powershell
+# AWS CLI
+winget install Amazon.AWSCLI
+
+# eksctl
+winget install eksctl
+
+# kubectl
+winget install Kubernetes.kubectl
+
+# Verify all tools are installed (close and reopen terminal first)
+aws --version
+eksctl version
+kubectl version --client
+```
+
+#### Option B — Chocolatey (if Winget is not available)
+
+First install Chocolatey (run in PowerShell as Administrator):
+
+```powershell
+# Install Chocolatey package manager
+Set-ExecutionPolicy Bypass -Scope Process -Force
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+
+# Install tools
+choco install awscli -y
+choco install eksctl -y
+choco install kubernetes-cli -y
+
+# Verify (close and reopen terminal first)
+aws --version
+eksctl version
+kubectl version --client
+```
+
+#### Option C — Manual Download (if neither Winget nor Chocolatey works)
+
+```powershell
+# AWS CLI — download and run the MSI installer
+# 1. Download from: https://awscli.amazonaws.com/AWSCLIV2.msi
+# 2. Double-click AWSCLIV2.msi and follow the installer
+# 3. Open a new terminal and run: aws --version
+
+# eksctl — download binary
+$eksctlUrl = "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_Windows_amd64.zip"
+Invoke-WebRequest -Uri $eksctlUrl -OutFile "$env:TEMP\eksctl.zip"
+Expand-Archive -Path "$env:TEMP\eksctl.zip" -DestinationPath "$env:TEMP\eksctl"
+# Move to a folder in your PATH (e.g. C:\Windows\System32)
+Move-Item "$env:TEMP\eksctl\eksctl.exe" "C:\Windows\System32\eksctl.exe"
+
+# kubectl — download binary
+$kubectlUrl = "https://dl.k8s.io/release/v1.31.0/bin/windows/amd64/kubectl.exe"
+Invoke-WebRequest -Uri $kubectlUrl -OutFile "C:\Windows\System32\kubectl.exe"
+
+# Verify
+aws --version
+eksctl version
+kubectl version --client
+```
+
+#### Windows-Specific Notes
+
+All subsequent commands in this guide use bash syntax. On Windows, use one of these:
+
+**Option 1 — Git Bash (Recommended for this guide)**
+Install Git for Windows: https://git-scm.com/download/win
+Git Bash gives you a full bash shell where all commands work as written.
+
+**Option 2 — WSL 2 (Best experience)**
+WSL (Windows Subsystem for Linux) gives you a real Ubuntu environment:
+```powershell
+# Enable WSL 2 (run in PowerShell as Administrator)
+wsl --install
+# Restart your computer, then open "Ubuntu" from the Start menu
+# Follow the Linux instructions above inside WSL
+```
+
+**Option 3 — PowerShell equivalents**
+If you must use PowerShell, replace bash syntax as follows:
+
+| Bash | PowerShell |
+|------|-----------|
+| `export VAR=value` | `$env:VAR = "value"` |
+| `echo $VAR` | `echo $env:VAR` |
+| `cat file \| base64` | `[Convert]::ToBase64String([IO.File]::ReadAllBytes("file"))` |
+| `base64 -d` | `[System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($encoded))` |
+| `curl http://...` | `Invoke-WebRequest -Uri "http://..." -UseBasicParsing` |
+| `python3` | `python` |
 
 ---
 
