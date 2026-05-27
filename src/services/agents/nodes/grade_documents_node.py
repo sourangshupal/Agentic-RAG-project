@@ -142,7 +142,7 @@ async def ainvoke_grade_documents_step(
             output={
                 "routing_decision": route,
                 "is_relevant": is_relevant,
-                "score": score,
+                "score": grading_result.score,
                 "reasoning": grading_result.reasoning,
             },
             metadata={

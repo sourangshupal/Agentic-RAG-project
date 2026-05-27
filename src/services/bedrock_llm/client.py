@@ -35,6 +35,22 @@ class BedrockLLMClient:
             self._client = boto3.client("bedrock-runtime", **kwargs)
         return self._client
 
+    @staticmethod
+    def _infer_provider(model_id: str) -> Optional[str]:
+        """Infer Bedrock provider from model ID or ARN. Required by ChatBedrock when model_id is an ARN."""
+        lower = model_id.lower()
+        if "meta" in lower or "llama" in lower:
+            return "meta"
+        if "anthropic" in lower or "claude" in lower:
+            return "anthropic"
+        if "amazon" in lower or "titan" in lower or "nova" in lower:
+            return "amazon"
+        if "mistral" in lower:
+            return "mistral"
+        if "cohere" in lower:
+            return "cohere"
+        return None
+
     def get_langchain_model(self, model: str = "", temperature: float = 0.0) -> Any:
         """Return a LangChain ChatBedrock instance for use in agent nodes."""
         from langchain_aws import ChatBedrock
@@ -45,6 +61,9 @@ class BedrockLLMClient:
             "region_name": self._bedrock_cfg.aws_region,
             "model_kwargs": {"temperature": temperature},
         }
+        provider = self._infer_provider(model_id)
+        if provider:
+            kwargs["provider"] = provider
         if self._bedrock_cfg.aws_access_key_id:
             kwargs["aws_access_key_id"] = self._bedrock_cfg.aws_access_key_id
             kwargs["aws_secret_access_key"] = self._bedrock_cfg.aws_secret_access_key.get_secret_value()

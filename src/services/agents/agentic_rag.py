@@ -238,6 +238,9 @@ class AgenticRAGService:
         try:
             start_time = time.time()
 
+            # Capture trace_id now while inside active trace context
+            trace_id = self.langfuse_tracer.get_trace_id() if self.langfuse_tracer else None
+
             logger.info("Invoking LangGraph workflow")
 
             # State initialization
@@ -333,6 +336,7 @@ class AgenticRAGService:
                 "rewritten_query": result.get("rewritten_query"),
                 "execution_time": execution_time,
                 "guardrail_score": result.get("guardrail_result").score if result.get("guardrail_result") else None,
+                "trace_id": trace_id,
             }
 
         except Exception as e:
