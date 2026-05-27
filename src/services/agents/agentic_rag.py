@@ -257,6 +257,7 @@ class AgenticRAGService:
                 "original_query": None,
                 "rewritten_query": None,
                 "sanitized_query": None,
+                "output_guardrail_filter": None,
             }
 
             # Runtime context (dependencies)
@@ -338,6 +339,7 @@ class AgenticRAGService:
                 "execution_time": execution_time,
                 "guardrail_score": result.get("guardrail_result").score if result.get("guardrail_result") else None,
                 "guardrail_filter": result.get("guardrail_result").reason if result.get("guardrail_result") else None,
+                "output_guardrail_filter": result.get("output_guardrail_filter"),
                 "trace_id": trace_id,
             }
 

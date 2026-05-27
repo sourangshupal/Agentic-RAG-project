@@ -76,7 +76,7 @@ class BedrockGuardrailsService:
         content = [{"text": {"text": query}}]
         return await self._apply_guardrail(source="INPUT", content=content, label="input")
 
-    async def check_output(self, answer: str, source_docs: List[str]) -> GuardrailResult:
+    async def check_output(self, answer: str, source_docs: List[str], query: str = "") -> GuardrailResult:
         """Apply guardrail to the generated answer (OUTPUT side).
 
         Evaluates content filters and grounding: verifies the answer is
@@ -84,19 +84,22 @@ class BedrockGuardrailsService:
 
         :param answer: Generated answer text.
         :param source_docs: Retrieved source document texts used as grounding context.
+        :param query: Original user query — required by Bedrock contextual grounding policy.
         :returns: GuardrailResult with allowed flag and reason.
         """
         if not self._cfg.guardrail_id:
             logger.debug("Bedrock guardrails disabled (no guardrail_id) — passing output through")
             return self._disabled_result()
 
-        # Build content: grounding sources first, then the response being checked.
+        # Bedrock contextual grounding requires: grounding_source + query + answer (guard)
         content: List[Dict[str, Any]] = [
             {"text": {"text": doc, "qualifiers": ["grounding_source"]}}
             for doc in source_docs
             if doc.strip()
         ]
-        content.append({"text": {"text": answer}})
+        if query:
+            content.append({"text": {"text": query, "qualifiers": ["query"]}})
+        content.append({"text": {"text": answer, "qualifiers": ["guard_content"]}})
 
         return await self._apply_guardrail(source="OUTPUT", content=content, label="output")
 
@@ -167,7 +170,8 @@ class BedrockGuardrailsService:
             for entity in assessment.get("sensitiveInformationPolicy", {}).get("piiEntities", []):
                 if entity.get("action") == "BLOCKED":
                     return False
-            for f in assessment.get("groundingPolicy", {}).get("filters", []):
+            # Bedrock uses contextualGroundingPolicy (not groundingPolicy) for output grounding
+            for f in assessment.get("contextualGroundingPolicy", {}).get("filters", []):
                 if f.get("action") == "BLOCKED":
                     return False
         return True
@@ -195,12 +199,13 @@ class BedrockGuardrailsService:
                 if entity.get("action") in ("BLOCKED", "ANONYMIZED"):
                     reasons.append(f"pii_{entity.get('action', 'detected').lower()}: {entity.get('type', 'unknown')}")
 
-            # Grounding violations
-            grounding = assessment.get("groundingPolicy", {})
+            # Grounding violations (Bedrock uses contextualGroundingPolicy)
+            grounding = assessment.get("contextualGroundingPolicy", {})
             if grounding.get("filters"):
                 for f in grounding["filters"]:
                     if f.get("action") == "BLOCKED":
                         score = f.get("score", 0)
-                        reasons.append(f"grounding_blocked: score={score:.2f}")
+                        filter_type = f.get("type", "GROUNDING").lower()
+                        reasons.append(f"grounding_blocked:{filter_type} score={score:.2f} (threshold={f.get('threshold', 0.7):.2f})")
 
         return "; ".join(reasons) if reasons else f"Guardrail intervened (action={action})"

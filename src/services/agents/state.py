@@ -64,6 +64,7 @@ class AgentState(TypedDict):
     sanitized_query: Optional[str]
     retrieval_attempts: int
     guardrail_result: Optional[GuardrailScoring]
+    output_guardrail_filter: Optional[str]
     routing_decision: Optional[RoutingDecision]
     sources: Optional[Dict[str, Any]]
     relevant_sources: List[SourceItem]

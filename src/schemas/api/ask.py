@@ -56,6 +56,7 @@ class AgenticAskResponse(AskResponse):
     rewritten_query: Optional[str] = Field(None, description="Rewritten query if agent refined it")
     trace_id: Optional[str] = Field(None, description="Langfuse trace ID for feedback and debugging")
     guardrail_filter: Optional[str] = Field(None, description="Guardrail filter type that acted on this request (e.g. topic_blocked, content_blocked:HATE, pii_blocked:EMAIL, pii_anonymized:PHONE, passed)")
+    output_guardrail_filter: Optional[str] = Field(None, description="Output guardrail result — grounding/relevance check on generated answer (e.g. grounding_blocked:grounding score=0.49, or Content passed all guardrail checks)")
 
     class Config:
         json_schema_extra = {

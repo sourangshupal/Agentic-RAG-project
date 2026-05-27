@@ -54,13 +54,28 @@ async def ainvoke_output_guardrail_step(
     if not answer or not answer.strip():
         return {}
 
+    # Get the original query for grounding evaluation
+    from .utils import get_latest_query
+    query = state.get("sanitized_query") or get_latest_query(state.get("messages", []))
+
     # Collect source document texts for grounding check
+    # Use actual retrieved chunk context — titles alone are insufficient for grounding
     source_texts: List[str] = []
-    for source in state.get("relevant_sources", []):
-        title = getattr(source, "title", "")
-        arxiv_id = getattr(source, "arxiv_id", "")
-        if title:
-            source_texts.append(f"{title} (arXiv:{arxiv_id})")
+    from .utils import get_latest_context
+    context = get_latest_context(state.get("messages", []))
+    if context:
+        # Split context into chunks (tool messages may concatenate multiple docs)
+        source_texts = [chunk.strip() for chunk in context.split("\n\n") if chunk.strip()]
+
+    # Fall back to titles if no context available
+    if not source_texts:
+        for source in state.get("relevant_sources", []):
+            title = getattr(source, "title", "")
+            abstract = getattr(source, "abstract", "")
+            arxiv_id = getattr(source, "arxiv_id", "")
+            text = abstract or title
+            if text:
+                source_texts.append(f"{text} (arXiv:{arxiv_id})")
 
     # If no source texts available, skip grounding check
     if not source_texts:
@@ -74,6 +89,7 @@ async def ainvoke_output_guardrail_step(
                 trace=runtime.context.trace,
                 name="output_guardrail_check",
                 input_data={
+                    "query": query,
                     "answer_length": len(answer),
                     "source_count": len(source_texts),
                 },
@@ -84,7 +100,7 @@ async def ainvoke_output_guardrail_step(
 
     start_time = time.time()
     try:
-        result = await runtime.context.guardrails_service.check_output(answer, source_texts)
+        result = await runtime.context.guardrails_service.check_output(answer, source_texts, query=query)
 
         if span:
             execution_time = (time.time() - start_time) * 1000
@@ -100,10 +116,13 @@ async def ainvoke_output_guardrail_step(
 
         if not result.allowed:
             logger.warning(f"Output guardrail blocked answer: {result.reason}")
-            return {"messages": [AIMessage(content=GROUNDING_FAIL_MESSAGE)]}
+            return {
+                "messages": [AIMessage(content=GROUNDING_FAIL_MESSAGE)],
+                "output_guardrail_filter": result.reason,
+            }
 
         logger.info(f"Output guardrail passed: {result.reason}")
-        return {}
+        return {"output_guardrail_filter": result.reason}
 
     except Exception as e:
         logger.error(f"Output guardrail check failed: {e} — passing answer through")
