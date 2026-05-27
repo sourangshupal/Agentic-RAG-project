@@ -1,0 +1,85 @@
+# ============================================================
+# OpenSearch Dashboards Deployment
+#
+# Dashboards is a STATELESS web UI — it reads from OpenSearch and stores
+# nothing of its own. A regular Deployment (not StatefulSet) is correct here.
+#
+# The init container waits for OpenSearch to be healthy before Dashboards starts,
+# matching the "depends_on: opensearch: condition: service_healthy" from compose.yml.
+# ============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opensearch-dashboards
+  namespace: production
+  labels:
+    app: opensearch-dashboards
+    app.kubernetes.io/part-of: agentic-rag
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: opensearch-dashboards
+  template:
+    metadata:
+      labels:
+        app: opensearch-dashboards
+        app.kubernetes.io/part-of: agentic-rag
+    spec:
+      # ── Init Container ─────────────────────────────────────────────────────
+      # Wait for OpenSearch REST API to respond before starting Dashboards.
+      # Without this, Dashboards crashes on startup if OpenSearch isn't ready.
+      initContainers:
+        - name: wait-for-opensearch
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for OpenSearch to be ready..."
+              until wget -qO- http://opensearch:9200/_cluster/health; do
+                echo "OpenSearch not ready yet, retrying in 10s..."
+                sleep 10
+              done
+              echo "OpenSearch is ready. Starting Dashboards."
+
+      containers:
+        - name: opensearch-dashboards
+          image: opensearchproject/opensearch-dashboards:2.19.5
+          ports:
+            - name: http
+              containerPort: 5601
+
+          env:
+            # Point Dashboards at the OpenSearch K8s ClusterIP service
+            - name: OPENSEARCH_HOSTS
+              value: '["http://opensearch:9200"]'
+            # Disable the security plugin (matches DISABLE_SECURITY_DASHBOARDS_PLUGIN in compose.yml)
+            - name: DISABLE_SECURITY_DASHBOARDS_PLUGIN
+              value: "true"
+
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "200m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+
+          readinessProbe:
+            httpGet:
+              path: /api/status
+              port: 5601
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            timeoutSeconds: 10
+            failureThreshold: 5
+
+          livenessProbe:
+            httpGet:
+              path: /api/status
+              port: 5601
+            initialDelaySeconds: 90
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3

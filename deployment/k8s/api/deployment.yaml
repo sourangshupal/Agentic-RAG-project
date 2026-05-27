@@ -1,0 +1,157 @@
+# ============================================================
+# RAG API Deployment (FastAPI + LangGraph + Bedrock)
+#
+# Key design decisions:
+#
+# 1. serviceAccountName: rag-api-sa
+#    IRSA (IAM Roles for Service Accounts) — the pod assumes an AWS IAM role
+#    that has Bedrock permissions. AWS injects temporary credentials via a
+#    projected token; no static keys are embedded in the pod.
+#
+# 2. envFrom.secretRef: rag-app-secrets
+#    Injects ALL 25+ environment variables from the K8s Secret at once.
+#    This is equivalent to docker compose's env_file: .env
+#    The Secret key names match exactly what src/config.py (pydantic-settings) expects.
+#
+# 3. RollingUpdate with maxUnavailable: 0
+#    Zero-downtime deployments. The new pod must pass its readinessProbe
+#    before the old pod is terminated. Always 2+ pods serving traffic.
+#
+# 4. readinessProbe: GET /api/v1/health
+#    This endpoint (src/routers/ping.py) checks Postgres, OpenSearch, and the LLM.
+#    The pod only receives traffic once ALL its dependencies are healthy.
+#
+# 5. podAntiAffinity
+#    Spreads the 2 replicas across different nodes. If one node fails,
+#    the other replica continues serving traffic.
+#
+# Prerequisites:
+#   - rag-app-secrets Secret must exist
+#   - rag-api-sa ServiceAccount must exist (created by eksctl iamserviceaccount)
+#   - OpenSearch must be ready (init container waits for it)
+# ============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rag-api
+  namespace: production
+  labels:
+    app: rag-api
+    app.kubernetes.io/part-of: agentic-rag
+spec:
+  replicas: 2   # HPA (hpa.yaml) scales this between 2 and 6
+  selector:
+    matchLabels:
+      app: rag-api
+
+  # ── Rolling Update Strategy ──────────────────────────────────────────────
+  # maxUnavailable: 0  — Never terminate a pod until the replacement is ready
+  # maxSurge: 1        — Allow 1 extra pod temporarily during rollout
+  # Result: during a deploy, pods go 2→3→2 (never below 2)
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+
+  template:
+    metadata:
+      labels:
+        app: rag-api
+        app.kubernetes.io/part-of: agentic-rag
+    spec:
+      # ── IRSA Service Account ─────────────────────────────────────────────
+      # Created by: eksctl create iamserviceaccount --name rag-api-sa ...
+      # The SA has an annotation: eks.amazonaws.com/role-arn: arn:aws:iam::ACCOUNT:role/...
+      # When this pod starts, AWS SDK automatically picks up the IRSA token.
+      serviceAccountName: rag-api-sa
+
+      # ── Init Container ────────────────────────────────────────────────────
+      # Wait for OpenSearch to respond before starting the API.
+      # The API's lifespan handler checks OpenSearch on startup and logs a warning
+      # if it's not ready, but the init container prevents the pod from crash-looping.
+      initContainers:
+        - name: wait-for-opensearch
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for OpenSearch at http://opensearch:9200..."
+              until wget -qO- http://opensearch:9200/_cluster/health; do
+                echo "OpenSearch not ready, retrying in 5s..."
+                sleep 5
+              done
+              echo "OpenSearch is ready. Starting RAG API."
+
+      containers:
+        - name: rag-api
+          # Image is replaced at deploy time by cd.yml using sed:
+          #   sed -i "s|image: REPLACE_...|image: ECR_URI:SHA|g" deployment.yaml
+          # The full URI format: ACCOUNT.dkr.ecr.REGION.amazonaws.com/agentic-rag/api:SHA
+          image: REPLACE_WITH_ECR_URI/agentic-rag/api:latest
+          ports:
+            - name: http
+              containerPort: 8000
+
+          # ── Inject All Secrets as Environment Variables ──────────────────
+          # envFrom.secretRef injects the ENTIRE rag-app-secrets Secret as env vars.
+          # Every key in the Secret becomes an environment variable in the container.
+          # This is equivalent to: docker compose env_file: .env
+          envFrom:
+            - secretRef:
+                name: rag-app-secrets
+
+          # ── Override Specific Variables ──────────────────────────────────
+          # OPENSEARCH__HOST: use the K8s Service DNS name ("opensearch").
+          # This overrides the Secret value and matches how compose.yml works:
+          #   environment: OPENSEARCH__HOST=http://opensearch:9200
+          env:
+            - name: OPENSEARCH__HOST
+              value: "http://opensearch:9200"
+
+          resources:
+            requests:
+              memory: "1Gi"    # uvicorn + LangGraph + boto3 baseline
+              cpu: "500m"      # 0.5 CPU cores guaranteed
+            limits:
+              memory: "2Gi"    # OOMKill threshold
+              cpu: "2000m"     # 2 CPU cores max (Bedrock calls are CPU-light but async)
+
+          # ── Health Checks ─────────────────────────────────────────────────
+          # /api/v1/health checks: Postgres connection, OpenSearch cluster, LLM API
+          # See: src/routers/ping.py
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8000
+            initialDelaySeconds: 40   # uvicorn + service init (DB + OpenSearch + SA) ~30s
+            periodSeconds: 15
+            timeoutSeconds: 10
+            failureThreshold: 5
+
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8000
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+
+      # ── Anti-Affinity ──────────────────────────────────────────────────────
+      # "preferred" (not "required") — still schedules if only one node available,
+      # but strongly prefers to place the 2 replicas on different nodes.
+      # This is the Kubernetes equivalent of Docker Swarm's spread placement.
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - rag-api
+                topologyKey: kubernetes.io/hostname

@@ -1,0 +1,140 @@
+# ============================================================
+# Airflow Deployment (Webserver + Scheduler combined)
+#
+# ARCHITECTURE NOTE:
+#   This runs both airflow webserver AND airflow scheduler in ONE pod via
+#   entrypoint.sh (which backgrounds the webserver, foregrounds the scheduler).
+#   This matches how compose.yml runs Airflow — one container, one entrypoint.
+#
+#   This is intentionally simplified for student clarity.
+#   Production Airflow uses the official Helm chart with separate pods for
+#   webserver, scheduler, triggerer, and celery workers.
+#
+# DAG FILES:
+#   In compose.yml: ./airflow/dags is bind-mounted at runtime.
+#   In Kubernetes: bind mounts from the host are not available.
+#   DAGs are loaded from a ConfigMap (airflow-dags) created by cd.yml:
+#     kubectl create configmap airflow-dags --from-file=airflow/dags/
+#   Update DAGs: push to deployment branch → CI/CD recreates the ConfigMap.
+#
+# SRC/ DIRECTORY:
+#   In compose.yml: ./src is bind-mounted into the container.
+#   In Kubernetes: src/ is BAKED into the Docker image at build time.
+#   The airflow/Dockerfile has been modified to: COPY src /opt/airflow/src
+#
+# READINESS PROBE TIMING:
+#   Airflow's entrypoint.sh runs: db migrate → sync-perm → create admin user.
+#   This takes 2-5 minutes on first boot (cold start with empty DB).
+#   initialDelaySeconds: 300 prevents Kubernetes from killing Airflow
+#   before it finishes initializing. After the first boot, restarts are faster.
+# ============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: airflow
+  namespace: production
+  labels:
+    app: airflow
+    app.kubernetes.io/part-of: agentic-rag
+spec:
+  # Single replica — LocalExecutor writes task state to the Postgres DB.
+  # Running 2 replicas with LocalExecutor causes task conflicts (both schedulers
+  # would pick up the same DAG tasks). Use CeleryExecutor + Redis for HA Airflow.
+  replicas: 1
+  selector:
+    matchLabels:
+      app: airflow
+  template:
+    metadata:
+      labels:
+        app: airflow
+        app.kubernetes.io/part-of: agentic-rag
+    spec:
+      # ── Init Container ──────────────────────────────────────────────────
+      # Airflow DAGs import from src/ which connects to OpenSearch.
+      # Wait for OpenSearch before starting Airflow.
+      initContainers:
+        - name: wait-for-opensearch
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for OpenSearch..."
+              until wget -qO- http://opensearch:9200/_cluster/health; do
+                sleep 5
+              done
+              echo "OpenSearch ready. Starting Airflow."
+
+      containers:
+        - name: airflow
+          # Replaced at deploy time by cd.yml with the actual ECR image URI
+          image: REPLACE_WITH_ECR_URI/agentic-rag/airflow:latest
+          ports:
+            - name: http
+              containerPort: 8080
+
+          # Load all app secrets as environment variables (same pattern as API)
+          envFrom:
+            - secretRef:
+                name: rag-app-secrets
+
+          env:
+            - name: AIRFLOW_HOME
+              value: "/opt/airflow"
+            # PYTHONPATH lets Airflow DAGs import from src/ (baked into image)
+            - name: PYTHONPATH
+              value: "/opt/airflow/src"
+            # K8s service DNS for OpenSearch (overrides the Secret value)
+            - name: OPENSEARCH__HOST
+              value: "http://opensearch:9200"
+
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "3Gi"    # DAG parsing + docling PDF processing peaks high
+              cpu: "2000m"
+
+          # ── Health Checks ──────────────────────────────────────────────
+          # Airflow /health endpoint returns scheduler + metadatabase status.
+          # initialDelaySeconds: 300 (5 min) — first boot runs db migrate.
+          # After the first boot, subsequent restarts are faster (~60s).
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 300
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 10
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 360
+            periodSeconds: 60
+            timeoutSeconds: 10
+            failureThreshold: 5
+
+          volumeMounts:
+            # DAG files from ConfigMap — update by recreating the ConfigMap in cd.yml
+            - name: dags
+              mountPath: /opt/airflow/dags
+            # Airflow logs — ephemeral (lost on pod restart).
+            # For persistent logs, replace emptyDir with a PVC.
+            - name: logs
+              mountPath: /opt/airflow/logs
+
+      volumes:
+        # airflow-dags ConfigMap is created by cd.yml:
+        #   kubectl create configmap airflow-dags --from-file=airflow/dags/ -n production
+        - name: dags
+          configMap:
+            name: airflow-dags
+        # emptyDir is erased on every pod restart — acceptable for logs
+        # since Airflow also writes task logs to the Postgres DB (metadata)
+        - name: logs
+          emptyDir: {}

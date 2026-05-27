@@ -1,0 +1,74 @@
+# ============================================================
+# Horizontal Pod Autoscaler (HPA) for RAG API
+#
+# HPA automatically adjusts the number of API replicas based on
+# observed CPU and memory utilization. This handles traffic spikes
+# without over-provisioning at all times.
+#
+# How it works:
+#   1. Metrics Server collects CPU/memory from pods every 15s
+#   2. HPA compares actual utilization vs target (every 15s by default)
+#   3. desired_replicas = ceil(current_replicas × (actual / target))
+#   4. HPA adjusts the Deployment's replica count
+#
+# IMPORTANT: Install Metrics Server first:
+#   kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+#
+# Check HPA status:
+#   kubectl get hpa -n production
+#   # NAME          REFERENCE           TARGETS         MINPODS   MAXPODS   REPLICAS
+#   # rag-api-hpa   Deployment/rag-api   42%/70%         2         6         2
+# ============================================================
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: rag-api-hpa
+  namespace: production
+  labels:
+    app: rag-api
+    app.kubernetes.io/part-of: agentic-rag
+spec:
+  # Target: the Deployment to scale
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: rag-api
+
+  minReplicas: 2   # Always keep 2 pods (HA — survives one node failure)
+  maxReplicas: 6   # Cap at 6 to control AWS costs
+
+  metrics:
+    # Scale up when average CPU across all API pods exceeds 70%
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+
+    # Scale up when average memory exceeds 80%
+    # LangGraph loads ML models into memory — watch this metric closely
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+
+  # ── Scale-Down Behavior ────────────────────────────────────────────────
+  # Bedrock/LangGraph calls spike suddenly and drop quickly.
+  # Without a stabilization window, the HPA would thrash (add/remove pods rapidly).
+  # 300s = wait 5 minutes of consistently low load before scaling down.
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1             # Remove at most 1 pod per scale-down event
+          periodSeconds: 60    # At most once per minute
+    scaleUp:
+      stabilizationWindowSeconds: 0   # Scale up immediately (no delay)
+      policies:
+        - type: Pods
+          value: 2             # Add up to 2 pods at a time
+          periodSeconds: 60

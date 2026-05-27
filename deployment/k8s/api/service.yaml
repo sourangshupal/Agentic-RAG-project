@@ -1,0 +1,41 @@
+# ============================================================
+# RAG API Service
+#
+# Type: LoadBalancer — AWS automatically provisions a Classic ELB.
+# External clients connect to port 80 on the ELB hostname.
+# The ELB forwards to port 8000 on the API pods.
+#
+# To find the URL after deployment:
+#   kubectl get service rag-api -n production
+#   Look for EXTERNAL-IP — the ELB hostname (takes ~2 min to provision)
+#
+# Example:
+#   export API=abc123.us-east-1.elb.amazonaws.com
+#   curl http://$API/api/v1/health | jq .
+#   curl -X POST http://$API/api/v1/ask-agentic \
+#     -H "Content-Type: application/json" \
+#     -d '{"query": "What is vector policy?"}'
+# ============================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: rag-api
+  namespace: production
+  labels:
+    app: rag-api
+    app.kubernetes.io/part-of: agentic-rag
+  annotations:
+    # Keep ALB connections alive for 5 minutes.
+    # LangGraph agentic responses can take 30-60s for multi-step retrieval.
+    service.beta.kubernetes.io/aws-load-balancer-connection-idle-timeout: "300"
+    # ALB health check path — ELB pings this to decide if pods are healthy
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-path: "/api/v1/health"
+spec:
+  type: LoadBalancer
+  selector:
+    app: rag-api   # Routes to pods with this label
+  ports:
+    - name: http
+      port: 80           # External port — clients connect here
+      targetPort: 8000   # Container port — uvicorn listens here
+      protocol: TCP

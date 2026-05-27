@@ -1,0 +1,365 @@
+# ============================================================
+# CD Pipeline — Build Docker Images and Deploy to EKS
+#
+# WHEN IT RUNS:
+#   On every push to the `deployment` branch.
+#   This branch is the "production gate" — only merge here when ready to deploy.
+#
+# WHAT IT DOES (2 jobs):
+#
+#   Job 1 — build-and-push:
+#     1. Authenticate to AWS (access key from GitHub Secrets)
+#     2. Log in to Amazon ECR (Elastic Container Registry)
+#     3. Build rag-api Docker image → push to ECR with git SHA tag + :latest
+#     4. Build rag-airflow Docker image → push to ECR
+#     Output: full ECR image URIs (passed to deploy job)
+#
+#   Job 2 — deploy (runs after build-and-push):
+#     1. Set up kubectl + configure kubeconfig from GitHub Secret
+#     2. Apply namespace (idempotent)
+#     3. Create/update K8s Secret from GitHub Secrets (idempotent)
+#     4. Deploy OpenSearch → wait for rollout
+#     5. Deploy OpenSearch Dashboards
+#     6. Create Airflow DAGs ConfigMap
+#     7. Inject correct ECR image tags into deployment YAMLs
+#     8. Apply API + Airflow deployments
+#     9. Wait for rollouts to complete
+#     10. Print deployment summary (pod/service status + ELB hostnames)
+#
+# CONCURRENCY:
+#   Only one deployment runs at a time. If a new push arrives while a
+#   deployment is in progress, the old run is cancelled and the new one starts.
+#
+# REQUIRED GITHUB SECRETS (Settings > Secrets > Actions):
+#   AWS_ACCESS_KEY_ID           — IAM user with ECR push + EKS access
+#   AWS_SECRET_ACCESS_KEY       — matching secret key
+#   AWS_ACCOUNT_ID              — 12-digit AWS account number
+#   KUBE_CONFIG                 — base64-encoded kubeconfig
+#                                 (cat ~/.kube/config | base64 | pbcopy on Mac)
+#   POSTGRES_DATABASE_URL       — Neon PostgreSQL connection string
+#   REDIS__URL                  — Upstash Redis connection string
+#   LANGFUSE__PUBLIC_KEY        — Langfuse public key
+#   LANGFUSE__SECRET_KEY        — Langfuse secret key
+#   LOGFIRE__TOKEN              — Logfire token
+#   JINA_API_KEY                — Jina AI embeddings API key
+#   OPENAI_API_KEY              — OpenAI API key (fallback provider)
+#   BEDROCK__AWS_ACCESS_KEY_ID  — AWS key for Bedrock API calls
+#   BEDROCK__AWS_SECRET_ACCESS_KEY — matching secret
+#   BEDROCK__MODEL_ID           — Bedrock model ARN
+#   BEDROCK__GUARDRAIL_ID       — Bedrock guardrail ID
+#   AIRFLOW__WEBSERVER__SECRET_KEY — Random string for Airflow sessions
+# ============================================================
+name: CD — Build, Push, Deploy to EKS
+
+on:
+  push:
+    branches:
+      - deployment   # Only deploy from this branch
+
+# Prevent concurrent deployments — cancel the previous run if a new push arrives
+concurrency:
+  group: deploy-production
+  cancel-in-progress: true
+
+env:
+  AWS_REGION: us-east-1
+  EKS_CLUSTER_NAME: agentic-rag-cluster
+  ECR_API_REPO: agentic-rag/api
+  ECR_AIRFLOW_REPO: agentic-rag/airflow
+  K8S_NAMESPACE: production
+
+jobs:
+  # ── Job 1: Build Docker Images and Push to ECR ─────────────────────────────
+  build-and-push:
+    name: Build & Push Docker Images to ECR
+    runs-on: ubuntu-latest
+    outputs:
+      # Pass image URIs to the deploy job via job outputs
+      api-image: ${{ steps.build-api.outputs.image }}
+      airflow-image: ${{ steps.build-airflow.outputs.image }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── Configure AWS credentials ────────────────────────────────────────
+      # Provides AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_DEFAULT_REGION
+      # to subsequent steps. These come from GitHub repository Secrets.
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # ── Log in to ECR ────────────────────────────────────────────────────
+      # Runs: aws ecr get-login-password | docker login REGISTRY
+      # The registry output (ACCOUNT.dkr.ecr.REGION.amazonaws.com) is used below.
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # ── Build and Push: rag-api ──────────────────────────────────────────
+      # Image tag = full 40-char git commit SHA (github.sha).
+      # Also tagged as :latest for human reference and Docker layer cache.
+      # --cache-from :latest pulls the previous image to reuse unchanged layers.
+      - name: Build and push rag-api image
+        id: build-api
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          IMAGE_URI="${REGISTRY}/${{ env.ECR_API_REPO }}:${IMAGE_TAG}"
+          LATEST_URI="${REGISTRY}/${{ env.ECR_API_REPO }}:latest"
+
+          echo "Building API image: ${IMAGE_URI}"
+
+          docker build \
+            --cache-from "${LATEST_URI}" \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            --build-arg VERSION="${IMAGE_TAG}" \
+            -t "${IMAGE_URI}" \
+            -t "${LATEST_URI}" \
+            -f Dockerfile \
+            .
+
+          docker push "${IMAGE_URI}"
+          docker push "${LATEST_URI}"
+
+          # Store image URI for the deploy job
+          echo "image=${IMAGE_URI}" >> $GITHUB_OUTPUT
+          echo "API image pushed: ${IMAGE_URI}"
+
+      # ── Build and Push: rag-airflow ──────────────────────────────────────
+      # Build context is '.' (repo root) so airflow/Dockerfile can COPY src/.
+      # The Dockerfile uses: COPY src /opt/airflow/src
+      # This bakes the application source into the image (K8s has no bind mounts).
+      - name: Build and push rag-airflow image
+        id: build-airflow
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          IMAGE_URI="${REGISTRY}/${{ env.ECR_AIRFLOW_REPO }}:${IMAGE_TAG}"
+          LATEST_URI="${REGISTRY}/${{ env.ECR_AIRFLOW_REPO }}:latest"
+
+          echo "Building Airflow image: ${IMAGE_URI}"
+
+          # -f airflow/Dockerfile: Dockerfile is in the airflow/ subdirectory
+          # .             (context): repo root, so COPY src/ and COPY airflow/dags/ work
+          docker build \
+            --cache-from "${LATEST_URI}" \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            -t "${IMAGE_URI}" \
+            -t "${LATEST_URI}" \
+            -f airflow/Dockerfile \
+            .
+
+          docker push "${IMAGE_URI}"
+          docker push "${LATEST_URI}"
+
+          echo "image=${IMAGE_URI}" >> $GITHUB_OUTPUT
+          echo "Airflow image pushed: ${IMAGE_URI}"
+
+  # ── Job 2: Deploy to EKS ───────────────────────────────────────────────────
+  deploy:
+    name: Deploy to EKS Production
+    runs-on: ubuntu-latest
+    needs: build-and-push   # Wait for images to be available in ECR
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # ── Set up kubectl ───────────────────────────────────────────────────
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      # ── Configure kubeconfig ─────────────────────────────────────────────
+      # KUBE_CONFIG is stored as a base64-encoded string in GitHub Secrets.
+      # Decode it and write to ~/.kube/config so kubectl can connect to EKS.
+      # Generate it: cat ~/.kube/config | base64 | pbcopy  (on Mac)
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+          # Verify we can connect to the cluster
+          kubectl cluster-info
+          echo "Connected to EKS cluster: ${{ env.EKS_CLUSTER_NAME }}"
+
+      # ── Apply namespace ───────────────────────────────────────────────────
+      # kubectl apply is idempotent — safe to run on every deployment
+      - name: Apply namespace
+        run: kubectl apply -f deployment/eks/namespace.yaml
+
+      # ── Create / Update Kubernetes Secret ────────────────────────────────
+      # --dry-run=client -o yaml | kubectl apply -f -
+      # This pattern is idempotent: creates the Secret if it doesn't exist,
+      # or updates it if it does. Never stores real values in git.
+      - name: Create or update Kubernetes Secret
+        run: |
+          kubectl create secret generic rag-app-secrets \
+            --namespace ${{ env.K8S_NAMESPACE }} \
+            --from-literal=DEBUG="false" \
+            --from-literal=ENVIRONMENT="production" \
+            --from-literal=PROVIDER="bedrock" \
+            --from-literal=OPENSEARCH__HOST="http://opensearch:9200" \
+            --from-literal=OPENSEARCH__INDEX_NAME="arxiv-papers" \
+            --from-literal=OPENSEARCH__CHUNK_INDEX_SUFFIX="chunks" \
+            --from-literal=OPENSEARCH__VECTOR_DIMENSION="1024" \
+            --from-literal=POSTGRES_DATABASE_URL="${{ secrets.POSTGRES_DATABASE_URL }}" \
+            --from-literal=REDIS__URL="${{ secrets.REDIS__URL }}" \
+            --from-literal=REDIS__TTL_HOURS="6" \
+            --from-literal=BEDROCK__AWS_ACCESS_KEY_ID="${{ secrets.BEDROCK__AWS_ACCESS_KEY_ID }}" \
+            --from-literal=BEDROCK__AWS_SECRET_ACCESS_KEY="${{ secrets.BEDROCK__AWS_SECRET_ACCESS_KEY }}" \
+            --from-literal=BEDROCK__AWS_REGION="us-east-1" \
+            --from-literal=BEDROCK__MODEL_ID="${{ secrets.BEDROCK__MODEL_ID }}" \
+            --from-literal=BEDROCK__GUARDRAIL_ID="${{ secrets.BEDROCK__GUARDRAIL_ID }}" \
+            --from-literal=BEDROCK__GUARDRAIL_VERSION="DRAFT" \
+            --from-literal=LANGFUSE__PUBLIC_KEY="${{ secrets.LANGFUSE__PUBLIC_KEY }}" \
+            --from-literal=LANGFUSE__SECRET_KEY="${{ secrets.LANGFUSE__SECRET_KEY }}" \
+            --from-literal=LANGFUSE__HOST="https://us.cloud.langfuse.com" \
+            --from-literal=LANGFUSE__ENABLED="true" \
+            --from-literal=LANGFUSE__FLUSH_AT="15" \
+            --from-literal=LANGFUSE__FLUSH_INTERVAL="1.0" \
+            --from-literal=LOGFIRE__TOKEN="${{ secrets.LOGFIRE__TOKEN }}" \
+            --from-literal=LOGFIRE__ENABLED="true" \
+            --from-literal=LOGFIRE__SERVICE_NAME="arxiv-rag" \
+            --from-literal=LOGFIRE__ENVIRONMENT="production" \
+            --from-literal=JINA_API_KEY="${{ secrets.JINA_API_KEY }}" \
+            --from-literal=OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
+            --from-literal=OPENAI_MODEL="gpt-4o-mini" \
+            --from-literal=OPENAI_TIMEOUT="300" \
+            --from-literal=AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="${{ secrets.POSTGRES_DATABASE_URL }}" \
+            --from-literal=AIRFLOW__CORE__EXECUTOR="LocalExecutor" \
+            --from-literal=AIRFLOW__WEBSERVER__SECRET_KEY="${{ secrets.AIRFLOW__WEBSERVER__SECRET_KEY }}" \
+            --from-literal=AIRFLOW__API__AUTH_BACKENDS="airflow.api.auth.backend.basic_auth" \
+            --from-literal=AIRFLOW__WEBSERVER__UPDATE_FAB_PERMS="False" \
+            --from-literal=PYTHONWARNINGS="ignore::FutureWarning:airflow,ignore::DeprecationWarning:airflow" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      # ── Deploy OpenSearch ─────────────────────────────────────────────────
+      # Services first — pods need to register with the headless service
+      - name: Deploy OpenSearch
+        run: |
+          kubectl apply -f deployment/k8s/opensearch/service.yaml
+          kubectl apply -f deployment/k8s/opensearch/statefulset.yaml
+          echo "Waiting for OpenSearch StatefulSet rollout..."
+          kubectl rollout status statefulset/opensearch \
+            -n ${{ env.K8S_NAMESPACE }} \
+            --timeout=300s
+          echo "OpenSearch is running."
+
+      # ── Deploy OpenSearch Dashboards ──────────────────────────────────────
+      - name: Deploy OpenSearch Dashboards
+        run: |
+          kubectl apply -f deployment/k8s/opensearch-dashboards/service.yaml
+          kubectl apply -f deployment/k8s/opensearch-dashboards/deployment.yaml
+
+      # ── Create Airflow DAGs ConfigMap ─────────────────────────────────────
+      # Loads all .py files from airflow/dags/ as ConfigMap data.
+      # Mounted into the Airflow pod at /opt/airflow/dags.
+      # Recreated on every deployment so DAG changes are reflected immediately.
+      - name: Create Airflow DAGs ConfigMap
+        run: |
+          kubectl create configmap airflow-dags \
+            --namespace ${{ env.K8S_NAMESPACE }} \
+            --from-file=airflow/dags/ \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      # ── Inject correct ECR image tags ─────────────────────────────────────
+      # The deployment YAMLs have placeholder image names (REPLACE_WITH_ECR_URI).
+      # sed replaces the placeholder with the actual ECR URI built in Job 1.
+      - name: Set API image in deployment manifest
+        run: |
+          API_IMAGE="${{ needs.build-and-push.outputs.api-image }}"
+          sed -i "s|image: REPLACE_WITH_ECR_URI/agentic-rag/api:latest|image: ${API_IMAGE}|g" \
+            deployment/k8s/api/deployment.yaml
+          echo "API deployment image set to: ${API_IMAGE}"
+
+      - name: Set Airflow image in deployment manifest
+        run: |
+          AIRFLOW_IMAGE="${{ needs.build-and-push.outputs.airflow-image }}"
+          sed -i "s|image: REPLACE_WITH_ECR_URI/agentic-rag/airflow:latest|image: ${AIRFLOW_IMAGE}|g" \
+            deployment/k8s/airflow/deployment.yaml
+          echo "Airflow deployment image set to: ${AIRFLOW_IMAGE}"
+
+      # ── Deploy RAG API ─────────────────────────────────────────────────────
+      - name: Deploy RAG API
+        run: |
+          kubectl apply -f deployment/k8s/api/service.yaml
+          kubectl apply -f deployment/k8s/api/deployment.yaml
+          kubectl apply -f deployment/k8s/api/hpa.yaml
+
+      # ── Deploy Airflow ─────────────────────────────────────────────────────
+      - name: Deploy Airflow
+        run: |
+          kubectl apply -f deployment/k8s/airflow/service.yaml
+          kubectl apply -f deployment/k8s/airflow/deployment.yaml
+
+      # ── Wait for API rollout ───────────────────────────────────────────────
+      # kubectl rollout status blocks until all pods are ready or timeout.
+      # This ensures the deployment YAML was accepted and pods are running.
+      - name: Wait for RAG API rollout
+        run: |
+          echo "Waiting for rag-api rollout..."
+          kubectl rollout status deployment/rag-api \
+            -n ${{ env.K8S_NAMESPACE }} \
+            --timeout=300s
+          echo "RAG API rollout complete."
+
+      # ── Wait for Airflow rollout ───────────────────────────────────────────
+      # Airflow takes longer than the API (db migrate on first boot = ~3 min)
+      - name: Wait for Airflow rollout
+        run: |
+          echo "Waiting for Airflow rollout (may take 5+ minutes on first deploy)..."
+          kubectl rollout status deployment/airflow \
+            -n ${{ env.K8S_NAMESPACE }} \
+            --timeout=600s
+          echo "Airflow rollout complete."
+
+      # ── Deployment Summary ─────────────────────────────────────────────────
+      # Print the status of all resources and the external URLs.
+      # Run always() so we see the state even if something failed.
+      - name: Print deployment summary
+        if: always()
+        run: |
+          echo "============================================="
+          echo "Deployment Summary — $(date)"
+          echo "============================================="
+          echo ""
+          echo "--- Pods ---"
+          kubectl get pods -n ${{ env.K8S_NAMESPACE }} -o wide
+          echo ""
+          echo "--- Deployments ---"
+          kubectl get deployments -n ${{ env.K8S_NAMESPACE }}
+          echo ""
+          echo "--- StatefulSets ---"
+          kubectl get statefulsets -n ${{ env.K8S_NAMESPACE }}
+          echo ""
+          echo "--- Services (External URLs) ---"
+          kubectl get services -n ${{ env.K8S_NAMESPACE }}
+          echo ""
+          echo "--- HPA ---"
+          kubectl get hpa -n ${{ env.K8S_NAMESPACE }}
+          echo ""
+          echo "=== Access URLs (may take 2-3 min for ELB to provision) ==="
+          API_HOST=$(kubectl get service rag-api -n ${{ env.K8S_NAMESPACE }} \
+            -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "pending")
+          AIRFLOW_HOST=$(kubectl get service airflow -n ${{ env.K8S_NAMESPACE }} \
+            -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "pending")
+          DASHBOARDS_HOST=$(kubectl get service opensearch-dashboards -n ${{ env.K8S_NAMESPACE }} \
+            -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "pending")
+          echo "RAG API:    http://${API_HOST}/api/v1/health"
+          echo "Airflow:    http://${AIRFLOW_HOST}:8080"
+          echo "Dashboards: http://${DASHBOARDS_HOST}:5601"

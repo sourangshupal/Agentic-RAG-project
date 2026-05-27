@@ -1,0 +1,120 @@
+# ============================================================
+# CI Pipeline — Lint, Type Check, and Tests
+#
+# WHEN IT RUNS:
+#   On every Pull Request targeting main or aws branches.
+#   K8s manifest changes (deployment/**) and docs (*.md) are excluded
+#   because they don't affect Python code quality.
+#
+# WHAT IT DOES:
+#   1. Install Python 3.12 + uv (the project's package manager)
+#   2. Install all dependencies from the frozen uv.lock file
+#   3. Lint with ruff (import ordering + code style)
+#   4. Check formatting with ruff format
+#   5. Type check with mypy (informational — does not fail the build)
+#   6. Run the full pytest test suite
+#   7. Generate a code coverage report
+#
+# NO EXTERNAL SERVICES NEEDED:
+#   Tests use pytest-mock to mock Postgres, OpenSearch, OpenAI, and Bedrock.
+#   The .env.test file provides test configuration (read by pytest-dotenv).
+#   LOGFIRE__ENABLED and LANGFUSE__ENABLED are set to false so observability
+#   tools don't try to connect to real endpoints during CI.
+# ============================================================
+name: CI — Lint, Type Check, Tests
+
+on:
+  pull_request:
+    branches:
+      - main
+      - aws
+    paths-ignore:
+      - "deployment/**"   # K8s manifests don't affect Python CI
+      - "*.md"            # Documentation changes don't need test runs
+      - "notebooks/**"    # Jupyter notebooks are exploration-only
+
+jobs:
+  lint-and-test:
+    name: Lint + Type Check + Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        python-version: ["3.12"]   # Must match Dockerfile and pyproject.toml requires-python
+
+    steps:
+      # ── Step 1: Checkout ──────────────────────────────────────────────────
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── Step 2: Install uv ────────────────────────────────────────────────
+      # uv is the package manager this project uses instead of pip.
+      # astral-sh/setup-uv handles installing uv AND caching the download cache
+      # across runs — dramatically speeds up dependency installation.
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+          enable-cache: true
+
+      # ── Step 3: Set up Python ─────────────────────────────────────────────
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # ── Step 4: Install dependencies ─────────────────────────────────────
+      # --frozen: use exact versions from uv.lock (no implicit upgrades)
+      # --dev:    include dev dependencies (pytest, ruff, mypy, etc.)
+      - name: Install dependencies
+        run: uv sync --frozen --dev
+
+      # ── Step 5: Lint with ruff ────────────────────────────────────────────
+      # ruff check: finds code issues (undefined names, unused imports, etc.)
+      # ruff format --check: verifies code is formatted (fails if auto-format would change anything)
+      # --no-fix: report errors without auto-fixing (CI should fail, not silently fix)
+      - name: Lint with ruff
+        run: |
+          uv run ruff check --no-fix src/ tests/
+          uv run ruff format --check src/ tests/
+
+      # ── Step 6: Type check with mypy ─────────────────────────────────────
+      # pyproject.toml has mypy.ignore_errors=true, so type errors are informational.
+      # continue-on-error: true means mypy failures don't block the PR.
+      # To make type checking mandatory: set ignore_errors=false in pyproject.toml.
+      - name: Type check with mypy
+        run: uv run mypy src/
+        continue-on-error: true
+
+      # ── Step 7: Run tests ─────────────────────────────────────────────────
+      # pyproject.toml configures pytest:
+      #   asyncio_mode = "auto"       — all async tests run automatically
+      #   env_files = ".env.test"     — pytest-dotenv loads .env.test
+      #
+      # Flags:
+      #   -x:        Stop on first failure (faster feedback during development)
+      #   --tb=short: Compact traceback (easier to read in CI logs)
+      #   -v:        Show test names (easier to identify which test failed)
+      - name: Run tests
+        run: uv run pytest -x --tb=short -v
+        env:
+          ENVIRONMENT: test
+          # Disable external observability services — tests mock everything
+          LOGFIRE__ENABLED: "false"
+          LANGFUSE__ENABLED: "false"
+
+      # ── Step 8: Coverage report (always runs, even if tests failed) ───────
+      - name: Generate coverage report
+        run: uv run pytest --cov=src --cov-report=xml --cov-report=term-missing
+        if: always()
+        continue-on-error: true
+
+      # ── Step 9: Upload coverage ───────────────────────────────────────────
+      # Optional: requires CODECOV_TOKEN in GitHub repository secrets.
+      # Remove this step if you don't use Codecov.
+      - name: Upload coverage report
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false

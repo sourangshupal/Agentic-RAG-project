@@ -1,0 +1,69 @@
+# ============================================================
+# eksctl Cluster Configuration for Agentic RAG
+# Usage: eksctl create cluster -f deployment/eks/cluster.yaml
+#
+# What this creates:
+#   - EKS control plane (managed by AWS, ~$73/month)
+#   - One managed node group (2-4 x m5.xlarge)
+#   - OIDC provider (required for IRSA — IAM Roles for Service Accounts)
+#   - VPC, subnets, security groups via CloudFormation (automatic)
+#
+# Prerequisites:
+#   brew install eksctl awscli kubectl
+#   aws configure  (set region to us-east-1)
+#
+# After cluster creation, run:
+#   eksctl create iamserviceaccount \
+#     --cluster agentic-rag-cluster --namespace production --name rag-api-sa \
+#     --attach-policy-arn arn:aws:iam::ACCOUNT_ID:policy/AgenticRAGBedrockPolicy \
+#     --approve
+# ============================================================
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  # Name used in kubectl contexts and all eksctl commands
+  name: agentic-rag-cluster
+  region: us-east-1
+  version: "1.31"
+
+# withOIDC enables the OIDC identity provider on the cluster.
+# This is REQUIRED for IRSA (IAM Roles for Service Accounts) — the mechanism
+# that lets pods assume IAM roles without embedding static AWS credentials.
+iam:
+  withOIDC: true
+
+# Managed node groups: EC2 instances that EKS provisions and manages.
+# EKS handles OS patching, AMI updates, and node replacement automatically.
+managedNodeGroups:
+  - name: rag-workers
+    # m5.xlarge = 4 vCPU, 16 GB RAM
+    # OpenSearch requires at least 2 GB heap (-Xms1g -Xmx1g) + OS + other pods.
+    # m5.xlarge is the safe minimum for running OpenSearch + API on the same node.
+    # To save cost during development: switch to t3.large (2 vCPU, 8 GB, ~$60/month)
+    # but reduce OpenSearch heap to -Xms512m -Xmx512m.
+    instanceType: m5.xlarge
+
+    minSize: 2        # Keep 2 nodes for pod anti-affinity spread
+    maxSize: 4        # HPA can add API pods; cluster autoscaler adds nodes
+    desiredCapacity: 2
+
+    # EBS volume per node. 50 GB is enough for container images + ephemeral data.
+    # OpenSearch data lives on a separate PVC (see statefulset.yaml).
+    volumeSize: 50
+
+    # Nodes in private subnets — they don't have public IPs.
+    # Traffic flows: Internet → ELB (public) → Node (private) → Pod.
+    privateNetworking: true
+
+    labels:
+      role: worker
+      environment: production
+
+# Control plane logging. These CloudWatch log groups help debug cluster-level issues.
+cloudWatch:
+  clusterLogging:
+    enableTypes:
+      - api           # API server request logs
+      - audit         # Kubernetes audit trail (who did what)
+      - authenticator # IAM authentication logs

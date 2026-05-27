@@ -1,0 +1,16 @@
+# ============================================================
+# Kubernetes Namespace: production
+#
+# A namespace is a virtual cluster inside Kubernetes.
+# All application resources (pods, services, secrets, HPAs) live here.
+# It provides logical isolation from system namespaces like kube-system.
+#
+# Usage: kubectl apply -f deployment/eks/namespace.yaml
+# ============================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: production
+  labels:
+    app.kubernetes.io/part-of: agentic-rag
+    environment: production

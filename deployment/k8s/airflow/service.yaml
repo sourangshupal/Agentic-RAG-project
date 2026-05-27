@@ -1,0 +1,33 @@
+# ============================================================
+# Airflow Service
+#
+# Exposed as LoadBalancer on port 8080 so students can access the Airflow UI.
+# Default credentials are created by entrypoint.sh:
+#   Username: admin
+#   Password: set via AIRFLOW_ADMIN_PASSWORD env var (or "admin" if not set)
+#
+# To find the URL after deployment:
+#   kubectl get service airflow -n production
+#   Look for EXTERNAL-IP — the ELB hostname
+#   Open http://EXTERNAL-IP:8080 in your browser
+# ============================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: airflow
+  namespace: production
+  labels:
+    app: airflow
+    app.kubernetes.io/part-of: agentic-rag
+  annotations:
+    # Airflow UI uses long-lived sessions — keep ELB connections open
+    service.beta.kubernetes.io/aws-load-balancer-connection-idle-timeout: "3600"
+spec:
+  type: LoadBalancer
+  selector:
+    app: airflow
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP

@@ -1,0 +1,33 @@
+# ============================================================
+# OpenSearch Dashboards Service
+#
+# Exposed as LoadBalancer — AWS provisions a Classic ELB automatically.
+# Students can open the Dashboards UI in a browser via the ELB hostname.
+#
+# To find the URL after deployment:
+#   kubectl get service opensearch-dashboards -n production
+#   Look for the EXTERNAL-IP column — this is the ELB hostname (takes ~2 min to provision)
+#   Open http://EXTERNAL-IP:5601 in your browser
+#
+# For production hardening: replace with ClusterIP + Ingress + TLS certificate.
+# ============================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: opensearch-dashboards
+  namespace: production
+  labels:
+    app: opensearch-dashboards
+    app.kubernetes.io/part-of: agentic-rag
+  annotations:
+    # Keep the ELB connection alive longer — Dashboards uses long-poll connections
+    service.beta.kubernetes.io/aws-load-balancer-connection-idle-timeout: "3600"
+spec:
+  type: LoadBalancer
+  selector:
+    app: opensearch-dashboards
+  ports:
+    - name: http
+      port: 5601
+      targetPort: 5601
+      protocol: TCP

@@ -1,0 +1,156 @@
+# ============================================================
+# OpenSearch StatefulSet
+#
+# WHY StatefulSet (not Deployment)?
+#   StatefulSets give each pod a STABLE identity: opensearch-0, opensearch-1, ...
+#   This means:
+#     1. Ordered, graceful startup/shutdown (important for cluster bootstrapping)
+#     2. Stable DNS: opensearch-0.opensearch-headless.production.svc.cluster.local
+#     3. volumeClaimTemplates: each pod automatically gets its own PVC
+#        (opensearch-data-opensearch-0) that persists across pod restarts
+#
+#   A Deployment would require a manually created PVC with a claimName, and
+#   the pod could land on any node — potentially one that can't mount the EBS
+#   volume attached in a different AZ. StatefulSet handles this correctly.
+#
+# Usage:
+#   kubectl apply -f deployment/k8s/opensearch/service.yaml   # service first
+#   kubectl apply -f deployment/k8s/opensearch/statefulset.yaml
+#   kubectl rollout status statefulset/opensearch -n production
+# ============================================================
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: opensearch
+  namespace: production
+  labels:
+    app: opensearch
+    app.kubernetes.io/part-of: agentic-rag
+spec:
+  # serviceName must match the headless Service (opensearch-headless).
+  # The StatefulSet uses this to register DNS entries for each pod.
+  serviceName: opensearch-headless
+  replicas: 1  # Single-node for simplicity. Scale to 3 for production HA.
+
+  selector:
+    matchLabels:
+      app: opensearch
+
+  template:
+    metadata:
+      labels:
+        app: opensearch
+        app.kubernetes.io/part-of: agentic-rag
+    spec:
+      # ── Init Container ─────────────────────────────────────────────────────
+      # OpenSearch requires vm.max_map_count >= 262144 for Lucene memory-mapped files.
+      # Regular containers cannot set kernel parameters, but a privileged init
+      # container running as root can write to /proc/sys before the main container starts.
+      initContainers:
+        - name: fix-kernel-settings
+          image: busybox:1.36
+          securityContext:
+            privileged: true   # Needed to write to /proc/sys
+          command:
+            - sh
+            - -c
+            - |
+              # Increase virtual memory map count — required by Lucene / OpenSearch
+              sysctl -w vm.max_map_count=262144
+              echo "vm.max_map_count set to: $(cat /proc/sys/vm/max_map_count)"
+
+      # ── Main Container ─────────────────────────────────────────────────────
+      containers:
+        - name: opensearch
+          image: opensearchproject/opensearch:2.19.5
+          ports:
+            - name: http
+              containerPort: 9200   # REST API — used by rag-api and airflow
+            - name: transport
+              containerPort: 9300   # Cluster-internal transport (not exposed externally)
+            - name: performance
+              containerPort: 9600   # Performance Analyzer
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1000   # opensearch user inside the container
+
+          env:
+            # Single-node mode: do not wait for other members before starting
+            - name: discovery.type
+              value: "single-node"
+            # JVM heap: set -Xms and -Xmx to the SAME value to prevent heap resizing.
+            # 1g is safe for m5.xlarge (16 GB node). Raise to 2g if you have high query load.
+            # Rule of thumb: heap should not exceed 50% of available node RAM.
+            - name: OPENSEARCH_JAVA_OPTS
+              value: "-Xms1g -Xmx1g"
+            # Disable the security plugin — simplifies setup for learning.
+            # In a real production deployment, enable TLS + authentication.
+            - name: DISABLE_SECURITY_PLUGIN
+              value: "true"
+            # Lock memory pages to prevent OS swapping — critical for search performance.
+            # Combined with resource limits below, this is equivalent to
+            # ulimits.memlock: soft/hard = -1 in Docker Compose.
+            - name: bootstrap.memory_lock
+              value: "true"
+
+          # ── Resource Requests and Limits ────────────────────────────────────
+          # requests: guaranteed resources — Kubernetes will not schedule this pod
+          #           on a node that can't provide these.
+          # limits:   hard cap — pod is OOMKilled if it exceeds memory limit.
+          resources:
+            requests:
+              memory: "2Gi"    # 1g heap + 1g for OS/JVM overhead
+              cpu: "500m"      # 0.5 CPU cores guaranteed
+            limits:
+              memory: "3Gi"    # Kill if exceeds 3 GB (protects the node)
+              cpu: "2000m"     # 2 CPU cores max
+
+          volumeMounts:
+            # Mount the persistent volume at OpenSearch's data directory.
+            # This is where all indices, segments, and WAL files are stored.
+            - name: opensearch-data
+              mountPath: /usr/share/opensearch/data
+
+          # ── Health Checks ────────────────────────────────────────────────────
+          # livenessProbe: Kubernetes restarts the container if this fails.
+          # OpenSearch takes ~60-90s to start — set initialDelaySeconds accordingly.
+          livenessProbe:
+            httpGet:
+              path: /_cluster/health
+              port: 9200
+            initialDelaySeconds: 90
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 5
+
+          # readinessProbe: Kubernetes removes the pod from Service endpoints if this fails.
+          # No traffic is sent to the pod until /_cluster/health returns yellow or green.
+          # "yellow" means all primary shards are active (good enough for single-node).
+          readinessProbe:
+            httpGet:
+              path: /_cluster/health?wait_for_status=yellow&timeout=30s
+              port: 9200
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            timeoutSeconds: 30
+            failureThreshold: 10
+
+  # ── Volume Claim Templates ────────────────────────────────────────────────
+  # This is the key StatefulSet feature: each replica automatically gets its own PVC.
+  # For replicas=1, this creates PVC "opensearch-data-opensearch-0".
+  # The PVC persists even if the pod is deleted — your index data survives pod restarts.
+  # To delete the data: kubectl delete pvc opensearch-data-opensearch-0 -n production
+  volumeClaimTemplates:
+    - metadata:
+        name: opensearch-data
+        labels:
+          app: opensearch
+      spec:
+        accessModes:
+          - ReadWriteOnce   # Only one node can mount this EBS volume at a time (correct for single-node)
+        storageClassName: gp2   # AWS EBS gp2 storage class — available by default on EKS
+        resources:
+          requests:
+            storage: 20Gi   # 20 GB for arXiv papers index + vectors + BM25 segments

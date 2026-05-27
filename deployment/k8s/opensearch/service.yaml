@@ -1,0 +1,70 @@
+# ============================================================
+# OpenSearch Services — Two services are required:
+#
+# 1. opensearch-headless (ClusterIP: None)
+#    Required by the StatefulSet. A headless service does NOT load-balance —
+#    DNS queries return the pod IP directly. The StatefulSet uses it to give
+#    each pod a stable DNS name: opensearch-0.opensearch-headless
+#    This is for internal StatefulSet management, not for application traffic.
+#
+# 2. opensearch (ClusterIP)
+#    Used by rag-api, airflow, and opensearch-dashboards to connect to OpenSearch.
+#    DNS: opensearch.production.svc.cluster.local (or just "opensearch" within
+#    the same namespace). This is what OPENSEARCH__HOST=http://opensearch:9200 resolves to.
+#
+# NOTE: OpenSearch is NOT exposed externally (no LoadBalancer or NodePort).
+# If you need to access it locally for debugging:
+#   kubectl port-forward -n production pod/opensearch-0 9200:9200
+#   curl http://localhost:9200/_cluster/health
+# ============================================================
+
+# --- Service 1: Headless (for StatefulSet pod identity) ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: opensearch-headless
+  namespace: production
+  labels:
+    app: opensearch
+    app.kubernetes.io/part-of: agentic-rag
+spec:
+  # clusterIP: None = headless service.
+  # DNS returns individual pod IPs, not a virtual load-balancer IP.
+  # Required by the StatefulSet (spec.serviceName: opensearch-headless).
+  clusterIP: None
+  selector:
+    app: opensearch
+  ports:
+    - name: http
+      port: 9200
+      targetPort: 9200
+    - name: transport
+      port: 9300
+      targetPort: 9300
+
+---
+# --- Service 2: Regular ClusterIP (for application traffic) ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: opensearch
+  namespace: production
+  labels:
+    app: opensearch
+    app.kubernetes.io/part-of: agentic-rag
+spec:
+  # ClusterIP: accessible only within the cluster (default type).
+  # Other pods connect using: http://opensearch:9200
+  # This matches OPENSEARCH__HOST in the K8s Secret.
+  type: ClusterIP
+  selector:
+    app: opensearch
+  ports:
+    - name: http
+      port: 9200
+      targetPort: 9200
+      protocol: TCP
+    - name: performance
+      port: 9600
+      targetPort: 9600
+      protocol: TCP
