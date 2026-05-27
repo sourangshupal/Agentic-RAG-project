@@ -18,7 +18,6 @@ class AskRequest(BaseModel):
                 "query": "What are transformers in machine learning?",
                 "top_k": 3,
                 "use_hybrid": True,
-                "model": "gpt-4o-mini",
                 "categories": ["cs.AI", "cs.LG"],
             }
         }
@@ -63,16 +62,28 @@ class AgenticAskResponse(AskResponse):
             "example": {
                 "query": "What are transformers in machine learning?",
                 "answer": "Transformers are neural network architectures...",
-                "sources": ["https://arxiv.org/pdf/1706.03762.pdf"],
+                "sources": [
+                    {
+                        "arxiv_id": "1706.03762",
+                        "title": "Attention Is All You Need",
+                        "authors": ["Vaswani et al."],
+                        "url": "https://arxiv.org/pdf/1706.03762.pdf",
+                        "relevance_score": 0.95,
+                    }
+                ],
                 "chunks_used": 3,
                 "search_mode": "hybrid",
                 "reasoning_steps": [
-                    "Decided to retrieve relevant papers",
-                    "Retrieved documents from database",
-                    "Generated answer from relevant documents",
+                    "Validated query scope (score: 100/100)",
+                    "Retrieved documents (1 attempt(s))",
+                    "Graded documents (1 relevant)",
+                    "Generated answer from context",
                 ],
                 "retrieval_attempts": 1,
-                "trace_id": "abc123-def456-ghi789",
+                "rewritten_query": None,
+                "trace_id": "019e68a0f28eb4c5579131473f86ca31",
+                "guardrail_filter": "Content passed all guardrail checks",
+                "output_guardrail_filter": "Content passed all guardrail checks",
             }
         }
 
