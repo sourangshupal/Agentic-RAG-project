@@ -33,7 +33,7 @@ async def ainvoke_generate_answer_step(
     start_time = time.time()
 
     # Get question and context
-    question = get_latest_query(state["messages"])
+    question = state.get("sanitized_query") or get_latest_query(state["messages"])
     context = get_latest_context(state["messages"])
 
     # Count sources from relevant_sources

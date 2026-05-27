@@ -131,10 +131,6 @@ class BedrockGuardrailsService:
             raise BedrockGuardrailsException(f"Bedrock Guardrails {label} check failed: {e}")
 
         action = response.get("action", "NONE")
-        allowed = action == "NONE"
-
-        # Extract human-readable reason from assessments
-        reason = self._extract_reason(response, action)
 
         # Extract any modified output text (e.g., PII-redacted version)
         outputs = [
@@ -143,8 +139,38 @@ class BedrockGuardrailsService:
             if "text" in block
         ]
 
+        # INTERVENED can mean hard-block OR PII anonymization.
+        # Allow through if the only intervention was PII anonymization (no hard blocks).
+        if action == "NONE":
+            allowed = True
+        elif self._is_anonymize_only(response):
+            allowed = True  # PII was scrubbed; sanitized text is in outputs
+        else:
+            allowed = False
+
+        # Extract human-readable reason from assessments
+        reason = self._extract_reason(response, action)
+
         logger.info(f"Guardrail {label} check: action={action}, allowed={allowed}, reason={reason}")
         return GuardrailResult(allowed=allowed, action=action, reason=reason, outputs=outputs)
+
+    @staticmethod
+    def _is_anonymize_only(response: Dict[str, Any]) -> bool:
+        """Return True if INTERVENED solely due to PII anonymization — no hard blocks."""
+        for assessment in response.get("assessments", []):
+            for topic in assessment.get("topicPolicy", {}).get("topics", []):
+                if topic.get("action") == "BLOCKED":
+                    return False
+            for item in assessment.get("contentPolicy", {}).get("filters", []):
+                if item.get("action") == "BLOCKED":
+                    return False
+            for entity in assessment.get("sensitiveInformationPolicy", {}).get("piiEntities", []):
+                if entity.get("action") == "BLOCKED":
+                    return False
+            for f in assessment.get("groundingPolicy", {}).get("filters", []):
+                if f.get("action") == "BLOCKED":
+                    return False
+        return True
 
     @staticmethod
     def _extract_reason(response: Dict[str, Any], action: str) -> str:

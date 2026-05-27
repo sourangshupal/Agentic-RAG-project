@@ -76,11 +76,15 @@ async def ainvoke_guardrail_step(
             result = await runtime.context.guardrails_service.check_input(query)
             score = 100 if result.allowed else 0
             reason = result.reason
+            sanitized_query = result.outputs[0] if result.outputs and result.allowed else None
+            if sanitized_query:
+                logger.info(f"Bedrock guardrail: PII anonymized, using sanitized query")
             logger.info(f"Bedrock guardrail: action={result.action}, allowed={result.allowed}, reason={reason}")
         else:
             # No guardrails configured — fail-open
             score = 100
             reason = "No guardrail service configured — passing through"
+            sanitized_query = None
             logger.debug(reason)
 
         response = GuardrailScoring(score=score, reason=reason)
@@ -103,6 +107,7 @@ async def ainvoke_guardrail_step(
             score=100,
             reason=f"Guardrail check failed (fail-open): {str(e)}",
         )
+        sanitized_query = None
         if span:
             execution_time = (time.time() - start_time) * 1000
             runtime.context.langfuse_tracer.update_span(
@@ -113,4 +118,7 @@ async def ainvoke_guardrail_step(
             )
             runtime.context.langfuse_tracer.end_span(span)
 
-    return {"guardrail_result": response}
+    result = {"guardrail_result": response}
+    if sanitized_query:
+        result["sanitized_query"] = sanitized_query
+    return result

@@ -34,7 +34,7 @@ async def ainvoke_grade_documents_step(
     start_time = time.time()
 
     # Get query and context
-    question = get_latest_query(state["messages"])
+    question = state.get("sanitized_query") or get_latest_query(state["messages"])
     context = get_latest_context(state["messages"])
 
     # Extract document chunks from context for logging

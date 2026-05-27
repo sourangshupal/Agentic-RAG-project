@@ -31,7 +31,7 @@ async def ainvoke_retrieve_step(
     start_time = time.time()
 
     messages = state["messages"]
-    question = get_latest_query(messages)
+    question = state.get("sanitized_query") or get_latest_query(messages)
     current_attempts = state.get("retrieval_attempts", 0)
 
     # Get max attempts from context

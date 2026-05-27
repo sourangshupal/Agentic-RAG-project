@@ -55,6 +55,7 @@ class AgenticAskResponse(AskResponse):
     retrieval_attempts: int = Field(..., description="Number of document retrieval attempts")
     rewritten_query: Optional[str] = Field(None, description="Rewritten query if agent refined it")
     trace_id: Optional[str] = Field(None, description="Langfuse trace ID for feedback and debugging")
+    guardrail_filter: Optional[str] = Field(None, description="Guardrail filter type that acted on this request (e.g. topic_blocked, content_blocked:HATE, pii_blocked:EMAIL, pii_anonymized:PHONE, passed)")
 
     class Config:
         json_schema_extra = {
