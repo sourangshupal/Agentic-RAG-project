@@ -98,22 +98,25 @@ async def lifespan(app: FastAPI):
         app.state.cache_client = make_cache_client(settings)
         logger.info("Services initialized: arXiv API client, PDF parser, OpenSearch, Embeddings, LLM, Guardrails, Langfuse, Cache")
 
+        # Create shared agentic RAG service (used by both MCP and Telegram)
+        agentic_rag_service = make_agentic_rag_service(
+            opensearch_client=app.state.opensearch_client,
+            llm_client=app.state.llm_client,
+            embeddings_client=app.state.embeddings_service,
+            langfuse_tracer=app.state.langfuse_tracer,
+            guardrails_service=app.state.guardrails_service,
+        )
+        app.state.agentic_rag_service = agentic_rag_service
+
         # Wire MCP context so tools can reach all services
         if settings.mcp.enabled:
-            agentic_rag_for_mcp = make_agentic_rag_service(
-                opensearch_client=app.state.opensearch_client,
-                llm_client=app.state.llm_client,
-                embeddings_client=app.state.embeddings_service,
-                langfuse_tracer=app.state.langfuse_tracer,
-                guardrails_service=app.state.guardrails_service,
-            )
             set_mcp_context(
                 MCPContext(
                     opensearch_client=app.state.opensearch_client,
                     embeddings_client=app.state.embeddings_service,
                     llm_client=app.state.llm_client,
                     langfuse_tracer=app.state.langfuse_tracer,
-                    agentic_rag_service=agentic_rag_for_mcp,
+                    agentic_rag_service=agentic_rag_service,
                     database=app.state.database,
                 )
             )
@@ -126,6 +129,7 @@ async def lifespan(app: FastAPI):
             llm_client=app.state.llm_client,
             cache_client=app.state.cache_client,
             langfuse_tracer=app.state.langfuse_tracer,
+            agentic_rag_service=agentic_rag_service,
         )
 
         if telegram_service:
