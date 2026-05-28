@@ -1,3 +1,4 @@
+import fcntl
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -123,24 +124,37 @@ async def lifespan(app: FastAPI):
             logger.info(f"MCP server context ready (mounted at {settings.mcp.path})")
 
         # Initialize Telegram bot (Phase 7)
-        telegram_service = make_telegram_service(
-            opensearch_client=app.state.opensearch_client,
-            embeddings_client=app.state.embeddings_service,
-            llm_client=app.state.llm_client,
-            cache_client=app.state.cache_client,
-            langfuse_tracer=app.state.langfuse_tracer,
-            agentic_rag_service=agentic_rag_service,
-        )
+        # Only one worker process may run the polling bot; others skip.
+        # fcntl.flock gives an exclusive non-blocking lock; kernel releases it when the
+        # process exits, so a container restart cleanly re-acquires it.
+        _telegram_lock_fd = None
+        _telegram_lock_acquired = False
+        try:
+            _telegram_lock_fd = open("/tmp/telegram_bot.lock", "w")
+            fcntl.flock(_telegram_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            _telegram_lock_acquired = True
+        except IOError:
+            logger.info("Telegram bot lock held by another worker — skipping in this worker")
 
-        if telegram_service:
-            app.state.telegram_service = telegram_service
-            try:
-                await telegram_service.start()
-                logger.info("Telegram bot started successfully")
-            except Exception as e:
-                logger.error(f"Failed to start Telegram bot: {e}")
-        else:
-            logger.info("Telegram bot not configured - skipping initialization")
+        if _telegram_lock_acquired:
+            telegram_service = make_telegram_service(
+                opensearch_client=app.state.opensearch_client,
+                embeddings_client=app.state.embeddings_service,
+                llm_client=app.state.llm_client,
+                cache_client=app.state.cache_client,
+                langfuse_tracer=app.state.langfuse_tracer,
+                agentic_rag_service=agentic_rag_service,
+            )
+
+            if telegram_service:
+                app.state.telegram_service = telegram_service
+                try:
+                    await telegram_service.start()
+                    logger.info("Telegram bot started successfully")
+                except Exception as e:
+                    logger.error(f"Failed to start Telegram bot: {e}")
+            else:
+                logger.info("Telegram bot not configured - skipping initialization")
 
         logger.info("API ready")
         yield
@@ -149,6 +163,10 @@ async def lifespan(app: FastAPI):
         if hasattr(app.state, "telegram_service") and app.state.telegram_service:
             await app.state.telegram_service.stop()
             logger.info("Telegram bot stopped")
+
+        if _telegram_lock_fd:
+            fcntl.flock(_telegram_lock_fd, fcntl.LOCK_UN)
+            _telegram_lock_fd.close()
 
         database.teardown()
         logger.info("API shutdown complete")
