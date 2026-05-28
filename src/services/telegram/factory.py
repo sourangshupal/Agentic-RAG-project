@@ -13,20 +13,9 @@ def make_telegram_service(
     llm_client,
     cache_client=None,
     langfuse_tracer=None,
+    agentic_rag_service=None,
 ) -> Optional[TelegramBot]:
-    """
-    Create Telegram bot if enabled.
-
-    Args:
-        opensearch_client: OpenSearch client
-        embeddings_client: Embeddings service client
-        llm_client: OpenAI LLM client
-        cache_client: Optional cache client
-        langfuse_tracer: Optional Langfuse tracer (not used)
-
-    Returns:
-        TelegramBot instance or None if disabled
-    """
+    """Create Telegram bot if enabled and token is configured."""
     settings = get_settings()
 
     if not settings.telegram.enabled:
@@ -43,6 +32,7 @@ def make_telegram_service(
         embeddings_client=embeddings_client,
         llm_client=llm_client,
         cache_client=cache_client,
+        agentic_rag_service=agentic_rag_service,
     )
 
     logger.info("Telegram bot created successfully")
