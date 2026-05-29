@@ -61,11 +61,12 @@ class OpenAILLMClient:
         self,
         query: str,
         chunks: List[Dict[str, Any]],
-        model: str = "gpt-4o-mini",
+        model: Optional[str] = None,
         **kwargs,
     ) -> Dict[str, Any]:
         """Generate a RAG answer using retrieved chunks via OpenAI chat completions."""
         try:
+            model = model or "gpt-4o-mini"
             prompt = self.prompt_builder.create_rag_prompt(query, chunks)
             client = self._get_async_client()
 
@@ -99,11 +100,17 @@ class OpenAILLMClient:
 
             citations = list(set(chunk.get("arxiv_id") for chunk in chunks if chunk.get("arxiv_id")))
 
+            usage = response.usage
             return {
                 "answer": answer,
                 "sources": sources,
                 "confidence": "high",
                 "citations": citations[:5],
+                "usage": {
+                    "prompt_tokens": usage.prompt_tokens if usage else 0,
+                    "completion_tokens": usage.completion_tokens if usage else 0,
+                    "total_tokens": usage.total_tokens if usage else 0,
+                },
             }
 
         except openai.AuthenticationError as e:
@@ -120,10 +127,11 @@ class OpenAILLMClient:
         self,
         query: str,
         chunks: List[Dict[str, Any]],
-        model: str = "gpt-4o-mini",
+        model: Optional[str] = None,
     ):
         """Stream a RAG answer using OpenAI streaming chat completions."""
         try:
+            model = model or "gpt-4o-mini"
             prompt = self.prompt_builder.create_rag_prompt(query, chunks)
             client = self._get_async_client()
 

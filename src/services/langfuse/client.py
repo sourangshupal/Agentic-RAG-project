@@ -176,7 +176,7 @@ class LangfuseTracer:
             return False
 
         try:
-            self.client.score(
+            self.client.create_score(
                 trace_id=trace_id,
                 name=name,
                 value=score,
@@ -187,6 +187,68 @@ class LangfuseTracer:
         except Exception as e:
             logger.error(f"Error submitting feedback: {e}")
             return False
+
+    def create_span(
+        self,
+        trace=None,
+        name: str = "span",
+        input_data: Optional[Any] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ):
+        """Create a non-context-manager span (used by agent nodes). v4: start_observation."""
+        if not self.client:
+            return None
+        try:
+            return self.client.start_observation(
+                name=name,
+                as_type="span",
+                input=input_data,
+                metadata=metadata or {},
+            )
+        except Exception as e:
+            logger.warning(f"Failed to create span: {e}")
+            return None
+
+    def set_trace_user_session(self, user_id: str, session_id: str):
+        """Attach user_id and session_id to the current active OTel trace span."""
+        if not self.client:
+            return
+        try:
+            from opentelemetry import trace as otel_trace
+            span = otel_trace.get_current_span()
+            if span and span.is_recording():
+                span.set_attribute("langfuse.user.id", user_id)
+                span.set_attribute("langfuse.session.id", session_id)
+        except Exception as e:
+            logger.warning(f"Failed to set user/session on trace: {e}")
+
+    def score_current_trace(self, score: float, name: str = "answer_relevance", comment: Optional[str] = None):
+        """Score the current active trace (0.0–1.0)."""
+        if not self.client:
+            return
+        try:
+            self.client.score_current_trace(name=name, value=score, comment=comment)
+        except Exception as e:
+            logger.warning(f"Failed to score trace: {e}")
+
+    def save_to_dataset(self, query: str, answer: str, dataset_name: str = "rag_eval", metadata: Optional[Dict[str, Any]] = None):
+        """Save a Q&A pair to a Langfuse dataset. Creates dataset if not exists."""
+        if not self.client:
+            return
+        try:
+            # ensure dataset exists (idempotent)
+            self.client.create_dataset(name=dataset_name)
+        except Exception:
+            pass  # already exists
+        try:
+            self.client.create_dataset_item(
+                dataset_name=dataset_name,
+                input={"query": query},
+                expected_output={"answer": answer},
+                metadata=metadata or {},
+            )
+        except Exception as e:
+            logger.warning(f"Failed to save dataset item: {e}")
 
     def flush(self):
         """Flush any pending traces."""
@@ -243,13 +305,15 @@ class LangfuseTracer:
             return
 
         try:
-            generation = self.client.generation(
+            with self.client.start_as_current_observation(
                 name=name,
+                as_type="generation",
                 model=model,
                 input=input_data,
                 metadata=metadata or {},
-            )
-            yield generation
+            ) as generation:
+                yield generation
+            self.client.flush()
         except Exception as e:
             logger.error(f"Error creating generation span: {e}")
             yield None
@@ -289,12 +353,14 @@ class LangfuseTracer:
             return
 
         try:
-            span = self.client.span(
+            with self.client.start_as_current_observation(
                 name=name,
+                as_type="span",
                 input=input_data,
                 metadata=metadata or {},
-            )
-            yield span
+            ) as span:
+                yield span
+            self.client.flush()
         except Exception as e:
             logger.error(f"Error creating span: {e}")
             yield None
@@ -305,44 +371,40 @@ class LangfuseTracer:
         output: Any,
         usage_metadata: Optional[Dict[str, Any]] = None,
         completion_start_time: Optional[float] = None,
+        model: Optional[str] = None,
     ):
-        """
-        Update a generation span with output and usage metrics.
-
-        Args:
-            generation: Generation object from start_generation()
-            output: LLM output/response
-            usage_metadata: Token usage and timing info
-                - prompt_tokens: int
-                - completion_tokens: int
-                - total_tokens: int
-                - latency_ms: float
-            completion_start_time: Optional start time for latency calculation
-        """
-        if not generation:
+        """Update a generation span with output and token usage for cost calculation."""
+        if not self.client:
             return
 
         try:
-            update_data = {"output": output}
+            # v4: use update_current_generation with usage_details for cost tracking
+            update_kwargs: Dict[str, Any] = {"output": output}
 
-            if usage_metadata:
-                # Add usage metadata following Langfuse format
-                if "prompt_tokens" in usage_metadata:
-                    update_data["usage"] = {
-                        "input": usage_metadata.get("prompt_tokens", 0),
-                        "output": usage_metadata.get("completion_tokens", 0),
-                        "total": usage_metadata.get("total_tokens", 0),
-                    }
+            if usage_metadata and "prompt_tokens" in usage_metadata:
+                update_kwargs["usage_details"] = {
+                    "input": usage_metadata.get("prompt_tokens", 0),
+                    "output": usage_metadata.get("completion_tokens", 0),
+                    "total": usage_metadata.get("total_tokens", 0),
+                }
 
-                # Add timing metadata
-                if "latency_ms" in usage_metadata:
-                    update_data["metadata"] = update_data.get("metadata", {})
-                    update_data["metadata"]["latency_ms"] = usage_metadata["latency_ms"]
+            if model:
+                update_kwargs["model"] = model
 
-            generation.update(**update_data)
-            generation.end()
+            self.client.update_current_generation(**update_kwargs)
         except Exception as e:
             logger.error(f"Error updating generation: {e}")
+
+    def end_span(
+        self,
+        span,
+        output: Optional[Any] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        level: Optional[str] = None,
+        status_message: Optional[str] = None,
+    ):
+        """Alias for update_span — called by agent nodes to close a span with output."""
+        self.update_span(span, output=output, metadata=metadata, level=level, status_message=status_message)
 
     def update_span(
         self,
@@ -378,6 +440,5 @@ class LangfuseTracer:
 
             if update_data:
                 span.update(**update_data)
-            span.end()
         except Exception as e:
             logger.error(f"Error updating span: {e}")

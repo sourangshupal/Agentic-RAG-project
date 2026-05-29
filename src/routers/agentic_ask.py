@@ -52,6 +52,8 @@ async def ask_agentic(
             retrieval_attempts=result.get("retrieval_attempts", 0),
             rewritten_query=result.get("rewritten_query"),
             trace_id=result.get("trace_id"),
+            guardrail_filter=result.get("guardrail_filter"),
+            output_guardrail_filter=result.get("output_guardrail_filter"),
         )
 
     except ValueError as e:

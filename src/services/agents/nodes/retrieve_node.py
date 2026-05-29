@@ -2,6 +2,7 @@ import logging
 import time
 from typing import Dict, Union
 
+import logfire
 from langchain_core.messages import AIMessage
 from langgraph.runtime import Runtime
 
@@ -12,6 +13,7 @@ from .utils import get_latest_query
 logger = logging.getLogger(__name__)
 
 
+@logfire.instrument("node:retrieve", extract_args=False)
 async def ainvoke_retrieve_step(
     state: AgentState,
     runtime: Runtime[Context],
@@ -29,7 +31,7 @@ async def ainvoke_retrieve_step(
     start_time = time.time()
 
     messages = state["messages"]
-    question = get_latest_query(messages)
+    question = state.get("sanitized_query") or get_latest_query(messages)
     current_attempts = state.get("retrieval_attempts", 0)
 
     # Get max attempts from context

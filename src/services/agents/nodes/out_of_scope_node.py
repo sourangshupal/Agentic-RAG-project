@@ -1,6 +1,8 @@
 import logging
 from typing import Dict, List
 
+import logfire
+
 from langchain_core.messages import AIMessage
 from langgraph.runtime import Runtime
 
@@ -11,6 +13,7 @@ from .utils import get_latest_query
 logger = logging.getLogger(__name__)
 
 
+@logfire.instrument("node:out_of_scope", extract_args=False)
 async def ainvoke_out_of_scope_step(
     state: AgentState,
     runtime: Runtime[Context],

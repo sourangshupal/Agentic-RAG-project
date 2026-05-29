@@ -2,6 +2,8 @@ import logging
 import time
 from typing import Dict
 
+import logfire
+
 from langgraph.runtime import Runtime
 
 from ..context import Context
@@ -13,6 +15,7 @@ from .utils import extract_sources_from_tool_messages, get_latest_context, get_l
 logger = logging.getLogger(__name__)
 
 
+@logfire.instrument("node:grade_documents", extract_args=False)
 async def ainvoke_grade_documents_step(
     state: AgentState,
     runtime: Runtime[Context],
@@ -31,7 +34,7 @@ async def ainvoke_grade_documents_step(
     start_time = time.time()
 
     # Get query and context
-    question = get_latest_query(state["messages"])
+    question = state.get("sanitized_query") or get_latest_query(state["messages"])
     context = get_latest_context(state["messages"])
 
     # Extract document chunks from context for logging
@@ -139,7 +142,7 @@ async def ainvoke_grade_documents_step(
             output={
                 "routing_decision": route,
                 "is_relevant": is_relevant,
-                "score": score,
+                "score": grading_result.score,
                 "reasoning": grading_result.reasoning,
             },
             metadata={

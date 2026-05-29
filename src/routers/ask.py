@@ -3,7 +3,7 @@ import logging
 import time
 from typing import Dict, List
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from src.dependencies import CacheDep, EmbeddingsDep, LangfuseDep, LLMDep, OpenSearchDep
 from src.schemas.api.ask import AskRequest, AskResponse
@@ -79,6 +79,7 @@ async def _prepare_chunks_and_sources(
 @ask_router.post("/ask", response_model=AskResponse)
 async def ask_question(
     request: AskRequest,
+    http_request: Request,
     opensearch_client: OpenSearchDep,
     embeddings_service: EmbeddingsDep,
     llm_client: LLMDep,
@@ -90,7 +91,10 @@ async def ask_question(
     rag_tracer = RAGTracer(langfuse_tracer)
     start_time = time.time()
 
-    with rag_tracer.trace_request("api_user", request.query) as trace:
+    user_id = http_request.headers.get("X-User-Id", "anonymous")
+    session_id = f"{hash(request.query + str(request.top_k) + str(request.use_hybrid)) & 0xFFFFFFFF:08x}"
+
+    with rag_tracer.trace_request(user_id, request.query, session_id=session_id) as trace:
         try:
             # Check exact cache first
             cached_response = None
@@ -141,6 +145,14 @@ async def ask_question(
                 rag_response = await llm_client.generate_rag_answer(query=request.query, chunks=chunks, model=request.model)
                 answer = rag_response.get("answer", "Unable to generate answer")
                 rag_tracer.end_generation(gen_span, answer, request.model)
+                # Pass token usage + model so Langfuse can calculate cost
+                if rag_response.get("usage"):
+                    langfuse_tracer.update_generation(
+                        gen_span,
+                        output=answer,
+                        usage_metadata=rag_response["usage"],
+                        model=request.model,
+                    )
 
             # Prepare response
             response = AskResponse(
@@ -152,6 +164,22 @@ async def ask_question(
             )
 
             rag_tracer.end_request(trace, answer, time.time() - start_time)
+
+            # Auto-score: chunks found = relevant answer, no chunks = low confidence
+            if langfuse_tracer:
+                score = 0.9 if len(chunks) > 0 else 0.2
+                langfuse_tracer.score_current_trace(
+                    score=score,
+                    name="answer_relevance",
+                    comment=f"chunks_used={len(chunks)} search_mode={response.search_mode}",
+                )
+                # Save to dataset for future evaluation
+                langfuse_tracer.save_to_dataset(
+                    query=request.query,
+                    answer=answer,
+                    dataset_name="rag_eval",
+                    metadata={"chunks_used": len(chunks), "model": request.model, "user_id": user_id},
+                )
 
             # Store response in exact match cache
             if cache_client:

@@ -61,8 +61,10 @@ class AgentState(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]
     original_query: Optional[str]
     rewritten_query: Optional[str]
+    sanitized_query: Optional[str]
     retrieval_attempts: int
     guardrail_result: Optional[GuardrailScoring]
+    output_guardrail_filter: Optional[str]
     routing_decision: Optional[RoutingDecision]
     sources: Optional[Dict[str, Any]]
     relevant_sources: List[SourceItem]

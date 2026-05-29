@@ -2,6 +2,8 @@ import logging
 import time
 from typing import Dict, List
 
+import logfire
+
 from langchain_core.messages import HumanMessage
 from langgraph.runtime import Runtime
 from pydantic import BaseModel, Field
@@ -24,6 +26,7 @@ class QueryRewriteOutput(BaseModel):
     )
 
 
+@logfire.instrument("node:rewrite_query", extract_args=False)
 async def ainvoke_rewrite_query_step(
     state: AgentState,
     runtime: Runtime[Context],

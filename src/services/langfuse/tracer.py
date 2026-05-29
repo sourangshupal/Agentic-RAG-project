@@ -15,7 +15,7 @@ class RAGTracer:
         self._enabled = tracer is not None
 
     @contextmanager
-    def trace_request(self, user_id: str, query: str):
+    def trace_request(self, user_id: str, query: str, session_id: Optional[str] = None):
         """Main request trace context manager."""
         if not self._enabled:
             yield None
@@ -26,6 +26,12 @@ class RAGTracer:
                 input_data={"query": query, "user_id": user_id},
                 metadata={"simplified_tracing": True},
             ) as trace:
+                # Set user_id and session_id as OTel span attributes (Langfuse v4)
+                if user_id or session_id:
+                    self.tracer.set_trace_user_session(
+                        user_id=user_id or "anonymous",
+                        session_id=session_id or "default",
+                    )
                 yield trace
         finally:
             self.tracer.flush()
@@ -109,11 +115,14 @@ class RAGTracer:
         if not self._enabled:
             yield None
             return
-        with self.tracer.start_span(
-            name="llm_generation",
-            input_data={"model": model, "prompt_length": len(prompt), "prompt": prompt},
-        ) as span:
-            yield span
+        try:
+            with self.tracer.start_span(
+                name="llm_generation",
+                input_data={"model": model, "prompt_length": len(prompt), "prompt": prompt},
+            ) as span:
+                yield span
+        except Exception:
+            yield None
 
     def end_generation(self, span, response: str, model: str):
         """End generation span with response."""

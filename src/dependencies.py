@@ -19,7 +19,8 @@ from src.services.arxiv.client import ArxivClient
 from src.services.cache.client import CacheClient
 from src.services.embeddings.jina_client import JinaEmbeddingsClient
 from src.services.langfuse.client import LangfuseTracer
-from src.services.openai_llm.client import OpenAILLMClient
+from src.services.bedrock_guardrails.service import BedrockGuardrailsService
+from src.services.llm_client_protocol import LLMClientProtocol
 from src.services.opensearch.client import OpenSearchClient
 from src.services.pdf_parser.parser import PDFParserService
 from src.services.telegram.bot import TelegramBot
@@ -67,9 +68,14 @@ def get_embeddings_service(request: Request) -> JinaEmbeddingsClient:
     return request.app.state.embeddings_service
 
 
-def get_llm_client(request: Request) -> OpenAILLMClient:
-    """Get OpenAI LLM client from the request state."""
+def get_llm_client(request: Request) -> LLMClientProtocol:
+    """Get LLM client from the request state (OpenAI or Bedrock depending on PROVIDER)."""
     return request.app.state.llm_client
+
+
+def get_guardrails_service(request: Request) -> BedrockGuardrailsService:
+    """Get Bedrock Guardrails service from the request state."""
+    return request.app.state.guardrails_service
 
 
 def get_langfuse_tracer(request: Request) -> LangfuseTracer:
@@ -95,7 +101,8 @@ OpenSearchDep = Annotated[OpenSearchClient, Depends(get_opensearch_client)]
 ArxivDep = Annotated[ArxivClient, Depends(get_arxiv_client)]
 PDFParserDep = Annotated[PDFParserService, Depends(get_pdf_parser)]
 EmbeddingsDep = Annotated[JinaEmbeddingsClient, Depends(get_embeddings_service)]
-LLMDep = Annotated[OpenAILLMClient, Depends(get_llm_client)]
+LLMDep = Annotated[LLMClientProtocol, Depends(get_llm_client)]
+GuardrailsDep = Annotated[BedrockGuardrailsService, Depends(get_guardrails_service)]
 LangfuseDep = Annotated[LangfuseTracer, Depends(get_langfuse_tracer)]
 CacheDep = Annotated[CacheClient | None, Depends(get_cache_client)]
 TelegramDep = Annotated[Optional[TelegramBot], Depends(get_telegram_service)]
@@ -106,6 +113,7 @@ def get_agentic_rag_service(
     llm: LLMDep,
     embeddings: EmbeddingsDep,
     langfuse: LangfuseDep,
+    guardrails: GuardrailsDep,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> AgenticRAGService:
     """Get agentic RAG service."""
@@ -114,6 +122,7 @@ def get_agentic_rag_service(
         llm_client=llm,
         embeddings_client=embeddings,
         langfuse_tracer=langfuse,
+        guardrails_service=guardrails,
     )
 
 
