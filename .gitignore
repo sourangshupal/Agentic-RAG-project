@@ -189,6 +189,10 @@ airflow/dags/arxiv_ingestion/INGESTION.md
 
 # MCP integration demo guide (local reference only)
 mcpintegration.md
+.clauge-worktrees/
+
+# Manual EKS deployment guide with credentials — DO NOT COMMIT
+docs/kubernetes.md
 
 
-
+scripts/insert_test_paper.py
