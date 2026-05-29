@@ -11,6 +11,9 @@
   <img src="https://img.shields.io/badge/OpenSearch-2.19.5-orange.svg" alt="OpenSearch">
   <img src="https://img.shields.io/badge/OpenAI-gpt--4o--mini-412991.svg" alt="OpenAI">
   <img src="https://img.shields.io/badge/Docker-4%20containers-blue.svg" alt="Docker">
+  <img src="https://img.shields.io/badge/AWS%20EKS-Deployed-FF9900.svg" alt="AWS EKS">
+  <img src="https://img.shields.io/badge/Kubernetes-1.29+-326CE5.svg" alt="Kubernetes">
+  <img src="https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-2088FF.svg" alt="CI/CD">
   <img src="https://img.shields.io/badge/Status-Phase%207%20Complete-brightgreen.svg" alt="Status">
   <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License">
 </p>
@@ -358,19 +361,131 @@ uv run jupyter notebook notebooks/phase7/phase7_agentic_rag.ipynb
 
 ---
 
+## 🌐 AWS EKS Production Deployment
+
+Beyond the local Docker Compose stack, the system is fully deployable to **AWS EKS** (Elastic Kubernetes Service) with automated CI/CD, production-grade monitoring, and infrastructure-as-code scripts.
+
+### Architecture on AWS
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        AWS EKS Cluster                       │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌──────────────┐ │
+│  │   API Pod       │  │  Airflow Pod    │  │ OpenSearch   │ │
+│  │   (rag-api)     │  │  (airflow)      │  │ + Dashboards │ │
+│  │   FastAPI +     │  │  Scheduler +    │  │              │ │
+│  │   LangGraph     │  │  Webserver      │  │              │ │
+│  └────────┬────────┘  └────────┬────────┘  └──────┬───────┘ │
+│           │                    │                    │         │
+│  ┌────────┴────────────────────┴────────────────────┴───────┐ │
+│  │              LoadBalancer Services (AWS ELB)           │ │
+│  └────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────┐
+│                     External Cloud Services                  │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────────────┐ │
+│  │ Neon Postgres│ │ Upstash Redis│ │ Langfuse Cloud       │ │
+│  │ Grafana Cloud│ │ OpenAI API   │ │ Jina AI Embeddings   │ │
+│  └──────────────┘ └──────────────┘ └──────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### What's Included
+
+| Component | What It Does | File |
+|---|---|---|
+| **EKS Cluster** | Managed Kubernetes with 2x `t3.medium` nodes | `deployment/eks/cluster.yaml` |
+| **ECR Repositories** | Private Docker registry for API + Airflow images | `agentic-rag/api`, `agentic-rag/airflow` |
+| **CI/CD Pipeline** | GitHub Actions: build images → push to ECR → deploy to EKS | `.github/workflows/cd.yml` |
+| **Grafana Cloud** | Kubernetes monitoring: CPU, memory, logs, cost (OpenCost) | `docs/grafana_integration.md` |
+| **IRSA** | IAM Roles for Service Accounts (Bedrock access without static keys) | `deployment/eks/` |
+| **tear_down.sh** | One-command destruction of all AWS resources | `scripts/tear_down.sh` |
+| **infra_start.sh** | One-command creation of the full EKS stack | `scripts/infra_start.sh` |
+| **insert_papers_by_id.py** | On-demand ingestion of specific arXiv papers by ID | `scripts/insert_papers_by_id.py` |
+
+### Deploy to AWS
+
+**Option A: Automated script (recommended)**
+
+```bash
+chmod +x scripts/infra_start.sh
+./scripts/infra_start.sh
+```
+
+The script handles: EKS cluster creation → ECR setup → Docker build/push → K8s namespace/secrets → manifest deployment → health verification.
+
+**Option B: CI/CD pipeline**
+
+Push to the `deployment` branch. GitHub Actions automatically:
+1. Builds and pushes Docker images to ECR
+2. Creates/updates the Kubernetes Secret from GitHub Secrets
+3. Applies all deployment manifests
+4. Waits for rollouts and prints service endpoints
+
+**Option C: Step-by-step manual**
+
+See `docs/kubernetes.md` for the complete manual deployment guide (copy-paste ready commands for every step).
+
+### Destroy Everything
+
+```bash
+chmod +x scripts/tear_down.sh
+./scripts/tear_down.sh
+```
+
+The script uninstalls Helm releases → deletes K8s namespaces → deletes the EKS cluster → deletes ECR repositories → verifies nothing is left behind. If any step fails, it tells you exactly what needs manual cleanup in the AWS Console.
+
+### Production Monitoring (Grafana Cloud)
+
+The Kubernetes Monitoring Helm chart (`k8s-monitoring-helm` v4) deploys:
+- **Grafana Alloy** — metrics and logs collector
+- **kube-state-metrics** — Kubernetes object metrics
+- **node-exporter** — node-level hardware metrics
+- **OpenCost** — per-namespace cost visibility
+- **Kepler** — energy consumption tracking
+
+Setup guide: `docs/grafana_integration.md`
+
+### On-Demand Paper Ingestion
+
+Instead of waiting for the scheduled Airflow DAG, ingest specific papers immediately:
+
+```bash
+# Inside the Airflow pod
+python scripts/insert_papers_by_id.py 1706.03762 1512.03385 1409.1556
+```
+
+Fetches metadata from arXiv, downloads PDFs, parses with Docling, chunks, embeds, and indexes to OpenSearch — all in one command.
+
+### Deployment Documentation
+
+| Document | Covers |
+|---|---|
+| `docs/infra_start.md` | Complete startup guide with architecture, prerequisites, step-by-step deployment, troubleshooting |
+| `docs/tear_down.md` | Complete teardown guide with cost analysis, resource-by-resource destruction commands |
+| `docs/grafana_integration.md` | Grafana Cloud Kubernetes Monitoring setup, values.yaml, verification, LogQL queries |
+| `docs/kubernetes.md` | Manual EKS deployment guide (git-ignored, contains real credentials after use) |
+
+---
+
 ## ⚙️ Configuration
 
 **Key environment variables** (see `.env.example` for the full template):
 
-| Variable | Required | Phase | Where to get it |
-|----------|----------|-------|----------------|
-| `OPENAI_API_KEY` | ✅ | 5+ | platform.openai.com → API Keys |
-| `JINA_API_KEY` | ✅ | 4+ | jina.ai → API Keys |
+| Variable | Required | Context | Where to get it |
+|----------|----------|---------|----------------|
+| `OPENAI_API_KEY` | ✅ | All | platform.openai.com → API Keys |
+| `JINA_API_KEY` | ✅ | All | jina.ai → API Keys |
 | `POSTGRES_DATABASE_URL` | ✅ | All | Neon console → Connection string |
-| `REDIS__URL` | ✅ | 6+ | Upstash console → **TCP tab** |
-| `LANGFUSE__PUBLIC_KEY` | ✅ | 6+ | Langfuse Cloud → Project Settings → API Keys |
-| `LANGFUSE__SECRET_KEY` | ✅ | 6+ | Langfuse Cloud → Project Settings → API Keys |
+| `REDIS__URL` | ✅ | All | Upstash console → **TCP tab** |
+| `LANGFUSE__PUBLIC_KEY` | ✅ | All | Langfuse Cloud → Project Settings → API Keys |
+| `LANGFUSE__SECRET_KEY` | ✅ | All | Langfuse Cloud → Project Settings → API Keys |
 | `TELEGRAM__BOT_TOKEN` | Optional | 7 | Telegram @BotFather |
+| `CLUSTER_NAME` | ✅ | EKS | Your choice (e.g., `agentic-rag-cluster`) |
+| `AWS_REGION` | ✅ | EKS | e.g., `us-east-1` |
+| `AWS_ACCOUNT_ID` | ✅ | EKS | `aws sts get-caller-identity --query Account` |
 
 > **Double underscore is required** for nested settings (`LANGFUSE__HOST`, `REDIS__URL`, `OPENSEARCH__HOST`). Single-underscore variants are silently ignored by pydantic-settings.
 
@@ -382,19 +497,24 @@ uv run jupyter notebook notebooks/phase7/phase7_agentic_rag.ipynb
 
 | Component | Technology | Where |
 |-----------|-----------|-------|
-| **API Framework** | FastAPI 0.115+ | Docker (local) |
-| **Search Engine** | OpenSearch 2.19.5 | Docker (local) |
-| **Workflow Orchestration** | Apache Airflow 2.10.3 | Docker (local) |
-| **Search UI** | OpenSearch Dashboards 2.19.5 | Docker (local) |
+| **API Framework** | FastAPI 0.115+ | Docker / EKS |
+| **Search Engine** | OpenSearch 2.19.5 | Docker / EKS |
+| **Workflow Orchestration** | Apache Airflow 2.10.3 | Docker / EKS |
+| **Search UI** | OpenSearch Dashboards 2.19.5 | Docker / EKS |
 | **Database** | Neon (serverless PostgreSQL 17) | Cloud |
 | **Cache** | Upstash Redis (serverless) | Cloud |
 | **LLM Generation** | OpenAI API (gpt-4o-mini) | Cloud |
 | **Embeddings** | Jina AI (1024-dim) | Cloud |
 | **Observability** | Langfuse Cloud | Cloud |
+| **K8s Monitoring** | Grafana Cloud + Alloy + OpenCost | Cloud |
+| **Container Orchestration** | AWS EKS (managed Kubernetes) | AWS |
+| **Container Registry** | Amazon ECR | AWS |
 | **PDF Parsing** | Docling | In-process |
 | **Agent Orchestration** | LangGraph | In-process |
 
-**Dev Tools:** UV, Ruff, MyPy, Pytest
+**Dev Tools:** UV, Ruff, MyPy, Pytest  
+**CI/CD:** GitHub Actions → Docker Build → ECR Push → EKS Deploy  
+**IaC:** `eksctl` + `kubectl` + `helm` + bash scripts
 
 ### Project Structure
 
@@ -417,14 +537,31 @@ Agentic-RAG-project/
 │   ├── Dockerfile               # Uses uv for fast installs
 │   ├── dags/                    # arxiv_paper_ingestion DAG
 │   └── entrypoint.sh
+├── deployment/                  # AWS EKS Kubernetes manifests
+│   ├── eks/                     # Cluster config, namespace, IRSA
+│   ├── k8s/api/                 # API Deployment + Service + HPA
+│   ├── k8s/airflow/             # Airflow Deployment + Service
+│   ├── k8s/opensearch/          # OpenSearch StatefulSet + Service
+│   └── k8s/opensearch-dashboards/ # Dashboards Deployment + Service
+├── scripts/                     # Utility scripts
+│   ├── tear_down.sh             # Destroy all AWS resources
+│   ├── infra_start.sh           # Deploy full EKS stack
+│   ├── insert_papers_by_id.py  # On-demand paper ingestion by arXiv ID
+│   ├── insert_test_paper.py   # Insert a test paper for API validation
+│   └── test_connections.py      # Verify all cloud APIs
+├── docs/                        # Documentation
+│   ├── infra_start.md           # Complete EKS startup guide
+│   ├── tear_down.md             # Complete teardown guide
+│   ├── grafana_integration.md   # Grafana Cloud K8s monitoring setup
+│   └── kubernetes.md            # Manual EKS deployment (git-ignored)
+├── .github/workflows/           # CI/CD pipelines
+│   └── cd.yml                   # Build → Push → Deploy to EKS
 ├── opensearch_dashboards/       # OpenSearch Dashboards config
 ├── notebooks/                   # Phase notebooks (phase1–7)
-├── scripts/
-│   └── test_connections.py      # Verify all cloud APIs
 ├── tests/                       # Unit + API tests
 ├── compose.yml                  # 4-container Docker stack
 ├── step-by-step.md              # Detailed phase-by-phase guide
-└── .env.example                 # Environment template
+└── .env.example                 # Environment template (local + deployment)
 ```
 
 ### API Endpoints
@@ -443,10 +580,15 @@ Agentic-RAG-project/
 ### Essential Commands
 
 ```bash
-# ── Service Management ─────────────────────────────────────────
+# ── Local Development (Docker Compose) ─────────────────────────
 make start                          # start all 4 containers
 make stop                           # stop all containers
 make health                         # verify all services healthy
+
+# ── AWS EKS Deployment ────────────────────────────────────────
+./scripts/infra_start.sh            # deploy full EKS stack from scratch
+./scripts/tear_down.sh              # destroy all AWS resources
+kubectl get pods -n production -w   # watch live pod status
 
 # ── Verify cloud APIs ──────────────────────────────────────────
 uv run python scripts/test_connections.py
@@ -454,6 +596,8 @@ uv run python scripts/test_connections.py
 # ── Logs ───────────────────────────────────────────────────────
 docker compose logs -f api
 docker compose logs -f airflow
+kubectl logs -n production -l app=rag-api --tail=100    # EKS API logs
+kubectl logs -n production -l app=airflow --tail=100    # EKS Airflow logs
 
 # ── Testing ────────────────────────────────────────────────────
 make test                           # all tests
@@ -465,7 +609,10 @@ make format                         # ruff format
 make lint                           # ruff check + mypy
 
 # ── Nuclear Reset ──────────────────────────────────────────────
+# Local:
 docker compose down --volumes && docker compose up --build -d
+# AWS:
+./scripts/tear_down.sh
 # Note: Neon and Upstash data is cloud-managed — not deleted by above
 ```
 
@@ -483,19 +630,39 @@ docker compose down --volumes && docker compose up --build -d
 | OpenSearch won't start | Increase Docker Desktop RAM to 8GB+ |
 | `rag-api` stays unhealthy | Run `docker compose logs api` — usually a missing env var |
 | Port already in use | Run `docker compose down` then try again |
+| **EKS: Airflow `OOMKilled`** | Increase memory limit to `5Gi` in `deployment/k8s/airflow/deployment.yaml` |
+| **EKS: API `OOMKilled`** | Increase memory limit to `4Gi` in `deployment/k8s/api/deployment.yaml` |
+| **EKS: `ImagePullBackOff`** | Check ECR login and image tag in deployment manifest |
+| **EKS: OpenSearch PVC `Pending`** | Install EBS CSI driver addon first (`eksctl create addon --name aws-ebs-csi-driver`) |
+| **EKS: arXiv API 429 rate limit** | Wait 30–60 seconds between requests; increase `ARXIV__RATE_LIMIT_DELAY` |
 
 **Resources:**
 - Detailed setup: [step-by-step.md](step-by-step.md)
+- EKS startup guide: [docs/infra_start.md](docs/infra_start.md)
+- EKS teardown guide: [docs/tear_down.md](docs/tear_down.md)
 - Phase notebooks: `notebooks/phase1` through `notebooks/phase7`
-- Service logs: `docker compose logs [service-name]`
+- Service logs (local): `docker compose logs [service-name]`
+- Service logs (EKS): `kubectl logs -n production -l app=[rag-api|airflow|opensearch]`
 
 ---
 
 ## 💰 Cost
 
 **Local Docker services:** Free  
-**Cloud free tiers:** Free (Neon 512MB, Upstash 10k cmd/day, Langfuse 50k traces/month)  
+**Cloud free tiers:** Free (Neon 512MB, Upstash 10k cmd/day, Langfuse 50k traces/month, Grafana Cloud 10k metrics)  
 **OpenAI API:** Pay-per-use — `gpt-4o-mini` costs ~$0.00015 per 1k input tokens. A typical RAG question with 3 chunks of context costs under $0.001. With Redis caching, repeated queries cost $0.
+
+**AWS EKS (when running):**
+
+| Resource | Monthly Cost |
+|---|---|
+| EKS Control Plane | ~$73 |
+| EC2 Nodes (2 x t3.medium) | ~$60 |
+| Classic ELBs (3) | ~$49 |
+| ECR Storage (~4 GB) | ~$0.40 |
+| **Total AWS** | **~$183/month** |
+
+> Run `./scripts/tear_down.sh` when not actively using the system to avoid AWS charges. The entire stack can be redeployed in ~20 minutes with `./scripts/infra_start.sh`.
 
 ---
 
