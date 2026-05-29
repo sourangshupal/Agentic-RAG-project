@@ -115,7 +115,7 @@ spec:
               memory: "1Gi"    # uvicorn + LangGraph + boto3 baseline
               cpu: "500m"      # 0.5 CPU cores guaranteed
             limits:
-              memory: "2Gi"    # OOMKill threshold
+              memory: "4Gi"    # PyTorch + LangGraph peaks at ~3.2GB; 4Gi prevents OOMKill
               cpu: "2000m"     # 2 CPU cores max (Bedrock calls are CPU-light but async)
 
           # ── Health Checks ─────────────────────────────────────────────────
