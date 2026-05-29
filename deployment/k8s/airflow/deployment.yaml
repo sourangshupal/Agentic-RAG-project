@@ -69,7 +69,7 @@ spec:
       containers:
         - name: airflow
           # Replaced at deploy time by cd.yml with the actual ECR image URI
-          image: REPLACE_WITH_ECR_URI/agentic-rag/airflow:latest
+          image: 685057748560.dkr.ecr.us-east-1.amazonaws.com/agentic-rag/airflow:latest
           ports:
             - name: http
               containerPort: 8080
@@ -91,10 +91,10 @@ spec:
 
           resources:
             requests:
-              memory: "1Gi"
+              memory: "2Gi"    # Docling + PyTorch baseline is ~1.5GB
               cpu: "500m"
             limits:
-              memory: "3Gi"    # DAG parsing + docling PDF processing peaks high
+              memory: "5Gi"    # Docling model load + PyTorch + scheduler peaks at ~3.5GB; 5Gi prevents OOMKill
               cpu: "2000m"
 
           # ── Health Checks ──────────────────────────────────────────────
