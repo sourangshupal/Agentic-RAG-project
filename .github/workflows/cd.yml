@@ -246,6 +246,8 @@ jobs:
             --from-literal=AIRFLOW__API__AUTH_BACKENDS="airflow.api.auth.backend.basic_auth" \
             --from-literal=AIRFLOW__WEBSERVER__UPDATE_FAB_PERMS="False" \
             --from-literal=PYTHONWARNINGS="ignore::FutureWarning:airflow,ignore::DeprecationWarning:airflow" \
+            --from-literal=AIRFLOW__CORE__DAG_IGNORE_FILE_SYNTAX="regexp" \
+            --from-literal=ARXIV__MAX_RESULTS="2" \
             --dry-run=client -o yaml | kubectl apply -f -
 
       # ── Deploy OpenSearch ─────────────────────────────────────────────────

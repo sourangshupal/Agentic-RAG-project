@@ -89,7 +89,7 @@ spec:
           # Image is replaced at deploy time by cd.yml using sed:
           #   sed -i "s|image: REPLACE_...|image: ECR_URI:SHA|g" deployment.yaml
           # The full URI format: ACCOUNT.dkr.ecr.REGION.amazonaws.com/agentic-rag/api:SHA
-          image: 685057748560.dkr.ecr.us-east-1.amazonaws.com/agentic-rag/api:manual
+          image: REPLACE_WITH_ECR_URI/agentic-rag/api:latest
           ports:
             - name: http
               containerPort: 8000
