@@ -1,0 +1,28 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "BedrockInference",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:InvokeModel",
+        "bedrock:InvokeModelWithResponseStream",
+        "bedrock:ApplyGuardrail"
+      ],
+      "Resource": [
+        "arn:aws:bedrock:us-east-1::foundation-model/*",
+        "arn:aws:bedrock:us-east-1:*:inference-profile/*",
+        "arn:aws:bedrock:us-east-1:*:guardrail/*"
+      ]
+    },
+    {
+      "Sid": "BedrockManagement",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:ListFoundationModels",
+        "bedrock:DescribeGuardrail"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

@@ -16,6 +16,19 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=pyproject.toml,target=/app/pyproject.toml \
     uv sync --frozen --no-dev
 
+# Strip CUDA torch and reinstall CPU-only to avoid ~2GB image bloat
+# EKS nodes are amd64 (x86_64) with no GPU; PyPI defaults to CUDA wheels for Linux amd64
+RUN --mount=type=cache,target=/root/.cache/uv \
+    for dir in /app/.venv/lib/python*/site-packages/torch* \
+               /app/.venv/lib/python*/site-packages/nvidia* \
+               /app/.venv/lib/python*/site-packages/functorch*; do \
+        [ -e "$dir" ] && rm -rf "$dir"; \
+    done && \
+    . /app/.venv/bin/activate && \
+    uv pip install \
+        torch torchvision torchaudio \
+        --index-url https://download.pytorch.org/whl/cpu
+
 # Copy source code
 COPY src /app/src
 
