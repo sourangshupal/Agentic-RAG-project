@@ -33,9 +33,6 @@
 # REQUIRED GITHUB SECRETS (Settings > Secrets > Actions):
 #   AWS_ACCESS_KEY_ID           — IAM user with ECR push + EKS access
 #   AWS_SECRET_ACCESS_KEY       — matching secret key
-#   AWS_ACCOUNT_ID              — 12-digit AWS account number
-#   KUBE_CONFIG                 — base64-encoded kubeconfig
-#                                 (cat ~/.kube/config | base64 | pbcopy on Mac)
 #   POSTGRES_DATABASE_URL       — Neon PostgreSQL connection string
 #   REDIS__URL                  — Upstash Redis connection string
 #   LANGFUSE__PUBLIC_KEY        — Langfuse public key
@@ -185,14 +182,13 @@ jobs:
           version: "v1.31.0"
 
       # ── Configure kubeconfig ─────────────────────────────────────────────
-      # KUBE_CONFIG is stored as a base64-encoded string in GitHub Secrets.
-      # Decode it and write to ~/.kube/config so kubectl can connect to EKS.
-      # Generate it: cat ~/.kube/config | base64 | pbcopy  (on Mac)
+      # Use AWS CLI to generate kubeconfig on the fly. No need for a static
+      # kubeconfig secret or aws-iam-authenticator binary.
       - name: Configure kubeconfig
         run: |
-          mkdir -p ~/.kube
-          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > ~/.kube/config
-          chmod 600 ~/.kube/config
+          aws eks update-kubeconfig \
+            --name ${{ env.EKS_CLUSTER_NAME }} \
+            --region ${{ env.AWS_REGION }}
           # Verify we can connect to the cluster
           kubectl cluster-info
           echo "Connected to EKS cluster: ${{ env.EKS_CLUSTER_NAME }}"

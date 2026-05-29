@@ -80,7 +80,7 @@ set_secret BEDROCK__GUARDRAIL_ID "$BEDROCK__GUARDRAIL_ID"
 
 set_secret AIRFLOW__WEBSERVER__SECRET_KEY "$AIRFLOW__WEBSERVER__SECRET_KEY"
 
-set_secret KUBE_CONFIG "$KUBE_CONFIG"
-
 echo ""
 echo "✅ All secrets uploaded"
+echo ""
+echo "NOTE: KUBE_CONFIG is no longer needed. The pipeline uses 'aws eks update-kubeconfig' instead."
