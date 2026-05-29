@@ -18,8 +18,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-# Ensure src/ is importable when running inside the container
+# Ensure src/ is importable when running inside either container
 sys.path.insert(0, "/app")
+sys.path.insert(0, "/opt/airflow")
 
 from dateutil import parser as date_parser
 from sqlalchemy.orm import Session
