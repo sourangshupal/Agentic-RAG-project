@@ -8,6 +8,26 @@ Usage (metadata-only, no PDF download/parse):
 
 Usage (replace existing papers in OpenSearch):
     python scripts/insert_papers_by_id.py 2401.12345 --replace-existing
+
+# ── Ingestion commands for the three test papers ──────────────────────────
+# Paper 1: 1706.03762  (Attention Is All You Need — Transformer)
+# Paper 2: 1512.03385  (Deep Residual Learning for Image Recognition — ResNet)
+# Paper 3: 1409.1556   (Very Deep Convolutional Networks for Large-Scale Image Recognition — VGG)
+#
+# Run inside the Airflow pod:
+#   kubectl cp scripts/insert_papers_by_id.py <AIRFLOW_POD>:/tmp/insert_papers_by_id.py -n production
+#   kubectl exec <AIRFLOW_POD> -n production -- python /tmp/insert_papers_by_id.py 1706.03762 1512.03385 1409.1556
+#
+# Retry for failed papers after arXiv rate-limit cooldown:
+#   kubectl exec <AIRFLOW_POD> -n production -- python /tmp/insert_papers_by_id.py 1706.03762 1512.03385
+#
+# Retry single paper:
+#   kubectl exec <AIRFLOW_POD> -n production -- python /tmp/insert_papers_by_id.py 1706.03762
+#
+# Results:
+#   1409.1556 (VGG)  → SUCCESS — 25 chunks indexed
+#   1706.03762 (Transformer) → FAILED — arXiv API HTTP 429 (rate limited)
+#   1512.03385 (ResNet)      → FAILED — arXiv API HTTP 429 (rate limited)
 """
 import argparse
 import asyncio
