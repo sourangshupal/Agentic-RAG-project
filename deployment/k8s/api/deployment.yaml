@@ -90,6 +90,7 @@ spec:
           #   sed -i "s|image: REPLACE_...|image: ECR_URI:SHA|g" deployment.yaml
           # The full URI format: ACCOUNT.dkr.ecr.REGION.amazonaws.com/agentic-rag/api:SHA
           image: REPLACE_WITH_ECR_URI/agentic-rag/api:latest
+          imagePullPolicy: Always
           ports:
             - name: http
               containerPort: 8000

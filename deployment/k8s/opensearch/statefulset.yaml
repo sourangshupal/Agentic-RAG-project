@@ -42,6 +42,11 @@ spec:
         app: opensearch
         app.kubernetes.io/part-of: agentic-rag
     spec:
+      # fsGroup ensures EBS volumes are chowned to GID 1000 (opensearch) on mount.
+      # Without this, the volume is owned by root and OpenSearch (runAsUser: 1000) cannot write.
+      securityContext:
+        fsGroup: 1000
+
       # ── Init Container ─────────────────────────────────────────────────────
       # OpenSearch requires vm.max_map_count >= 262144 for Lucene memory-mapped files.
       # Regular containers cannot set kernel parameters, but a privileged init
@@ -150,7 +155,7 @@ spec:
       spec:
         accessModes:
           - ReadWriteOnce   # Only one node can mount this EBS volume at a time (correct for single-node)
-        storageClassName: gp2   # AWS EBS gp2 storage class — available by default on EKS
+        storageClassName: gp3   # AWS EBS gp3 via EBS CSI driver (required on EKS 1.23+)
         resources:
           requests:
             storage: 20Gi   # 20 GB for arXiv papers index + vectors + BM25 segments

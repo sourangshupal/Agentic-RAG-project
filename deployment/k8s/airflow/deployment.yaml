@@ -70,6 +70,7 @@ spec:
         - name: airflow
           # Replaced at deploy time by cd.yml with the actual ECR image URI
           image: 685057748560.dkr.ecr.us-east-1.amazonaws.com/agentic-rag/airflow:latest
+          imagePullPolicy: Always
           ports:
             - name: http
               containerPort: 8080
@@ -120,21 +121,12 @@ spec:
             failureThreshold: 5
 
           volumeMounts:
-            # DAG files from ConfigMap — update by recreating the ConfigMap in cd.yml
-            - name: dags
-              mountPath: /opt/airflow/dags
-            # Airflow logs — ephemeral (lost on pod restart).
-            # For persistent logs, replace emptyDir with a PVC.
+            # DAGs are baked into the image at /opt/airflow/dags (including arxiv_ingestion/ subpackage).
+            # No ConfigMap mount — ConfigMap --from-file can't recurse into subdirectories,
+            # which breaks "from arxiv_ingestion.fetching import ..." imports.
             - name: logs
               mountPath: /opt/airflow/logs
 
       volumes:
-        # airflow-dags ConfigMap is created by cd.yml:
-        #   kubectl create configmap airflow-dags --from-file=airflow/dags/ -n production
-        - name: dags
-          configMap:
-            name: airflow-dags
-        # emptyDir is erased on every pod restart — acceptable for logs
-        # since Airflow also writes task logs to the Postgres DB (metadata)
         - name: logs
           emptyDir: {}
