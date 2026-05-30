@@ -361,3 +361,4 @@ jobs:
           echo "RAG API:    http://${API_HOST}/api/v1/health"
           echo "Airflow:    http://${AIRFLOW_HOST}:8080"
           echo "Dashboards: http://${DASHBOARDS_HOST}:5601"
+          echo "Grafana Cloud: https://grafana.com (Kubernetes Monitoring app)"
