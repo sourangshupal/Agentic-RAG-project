@@ -68,8 +68,7 @@ spec:
 
       containers:
         - name: airflow
-          # Replaced at deploy time by cd.yml with the actual ECR image URI
-          image: 685057748560.dkr.ecr.us-east-1.amazonaws.com/agentic-rag/airflow:latest
+          image: 685057748560.dkr.ecr.us-east-1.amazonaws.com/agentic-rag/airflow:manual
           imagePullPolicy: Always
           ports:
             - name: http

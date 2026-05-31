@@ -429,18 +429,26 @@ if [[ "${GRAFANA_ENABLED}" == "true" ]]; then
         log_warn "helm not found — skipping Grafana installation"
     elif [[ ! -f "${REPO_ROOT}/deployment/grafana/values.yaml" ]]; then
         log_warn "deployment/grafana/values.yaml not found — skipping Grafana installation"
+    elif [[ -z "${GRAFANA_CLOUD_TOKEN:-}" ]]; then
+        log_warn "GRAFANA_CLOUD_TOKEN not set in .env — skipping Grafana installation"
     else
         helm repo add grafana https://grafana.github.io/helm-charts &>/dev/null
         helm repo update &>/dev/null
 
         kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
 
+        # Substitute ${GRAFANA_CLOUD_TOKEN} placeholder in values.yaml at runtime
+        TMP_GRAFANA=$(mktemp)
+        sed "s|\${GRAFANA_CLOUD_TOKEN}|${GRAFANA_CLOUD_TOKEN}|g" \
+            "${REPO_ROOT}/deployment/grafana/values.yaml" > "${TMP_GRAFANA}"
+
         helm upgrade --install grafana-k8s-monitoring grafana/k8s-monitoring \
             --namespace monitoring \
-            --values "${REPO_ROOT}/deployment/grafana/values.yaml" \
+            --values "${TMP_GRAFANA}" \
             --timeout 10m \
             || log_warn "Grafana Helm install failed — check: helm list -n monitoring"
 
+        rm -f "${TMP_GRAFANA}"
         log_ok "Grafana Cloud monitoring installed"
     fi
 else

@@ -31,7 +31,7 @@ class ArxivSettings(BaseConfigSettings):
     base_url: str = "https://export.arxiv.org/api/query"
     pdf_cache_dir: str = "./data/arxiv_pdfs"
     rate_limit_delay: float = 3.0
-    timeout_seconds: int = 30
+    timeout_seconds: int = 60
     max_results: int = 15
     search_category: str = "cs.AI"
     download_max_retries: int = 3
