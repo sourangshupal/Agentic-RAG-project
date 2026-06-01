@@ -3,22 +3,24 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
+import logfire
 import uvicorn
 from fastapi import FastAPI
 from src.config import get_settings
 from src.db.factory import make_database
-import logfire
 from src.mcp_server.server import MCPContext, mcp, set_mcp_context
-from src.services.logfire.factory import configure_logfire
 from src.routers import agentic_ask, hybrid_search, ping
+from src.routers.a2a import router as a2a_router
 from src.routers.ask import ask_router, stream_router
+from src.routers.supervisor_ask import router as supervisor_router
 from src.services.agents.factory import make_agentic_rag_service
 from src.services.arxiv.factory import make_arxiv_client
+from src.services.bedrock_guardrails.factory import make_bedrock_guardrails_service
+from src.services.bedrock_llm.factory import make_bedrock_llm_client
 from src.services.cache.factory import make_cache_client
 from src.services.embeddings.factory import make_embeddings_service
 from src.services.langfuse.factory import make_langfuse_tracer
-from src.services.bedrock_guardrails.factory import make_bedrock_guardrails_service
-from src.services.bedrock_llm.factory import make_bedrock_llm_client
+from src.services.logfire.factory import configure_logfire
 from src.services.openai_llm.factory import make_openai_llm_client
 from src.services.opensearch.factory import make_opensearch_client
 from src.services.pdf_parser.factory import make_pdf_parser_service
@@ -109,6 +111,24 @@ async def lifespan(app: FastAPI):
         )
         app.state.agentic_rag_service = agentic_rag_service
 
+        # Supervisor agent — reuses existing agentic_rag_service and context
+        from src.services.agents.context import Context
+        from src.services.agents.supervisor_agent import SupervisorAgent
+
+        supervisor_context = Context(
+            llm_client=app.state.llm_client,
+            opensearch_client=app.state.opensearch_client,
+            embeddings_client=app.state.embeddings_service,
+            langfuse_tracer=app.state.langfuse_tracer,
+            guardrails_service=app.state.guardrails_service,
+            model_name=settings.openai_model,
+        )
+        app.state.supervisor_agent = SupervisorAgent(
+            context=supervisor_context,
+            agentic_rag_service=agentic_rag_service,
+        )
+        logger.info("SupervisorAgent initialized")
+
         # Wire MCP context so tools can reach all services
         if settings.mcp.enabled:
             set_mcp_context(
@@ -188,6 +208,8 @@ app.include_router(hybrid_search.router, prefix="/api/v1")
 app.include_router(ask_router, prefix="/api/v1")
 app.include_router(stream_router, prefix="/api/v1")
 app.include_router(agentic_ask.router)
+app.include_router(a2a_router)
+app.include_router(supervisor_router)
 
 # Mount MCP sub-app (lifespan is composed inside the main lifespan above)
 _mcp_settings = get_settings().mcp
