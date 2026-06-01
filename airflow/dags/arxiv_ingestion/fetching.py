@@ -7,6 +7,11 @@ from .common import get_cached_services
 
 logger = logging.getLogger(__name__)
 
+# Hardcoded keyword search for sure-shot results during DAG ingestion.
+# Searches for "transformer" in paper titles within the configured category.
+HARDCODED_SEARCH_KEYWORD = "transformer"
+HARDCODED_MAX_RESULTS = 2
+
 
 async def run_paper_ingestion_pipeline(
     target_date: str,
@@ -14,48 +19,58 @@ async def run_paper_ingestion_pipeline(
 ) -> dict:
     """Async wrapper for the paper ingestion pipeline.
 
-    :param target_date: Date to fetch papers for (YYYYMMDD format)
+    :param target_date: Date to fetch papers for (YYYYMMDD format) — ignored;
+                       we use a hardcoded keyword search instead.
     :param process_pdfs: Whether to download and process PDFs
     :returns: Dictionary with ingestion statistics
     """
     arxiv_client, _, database, metadata_fetcher, _ = get_cached_services()
 
-    max_results = arxiv_client.max_results
-    logger.info(f"Using default max_results from config: {max_results}")
+    # Build hardcoded search query: e.g. "cat:cs.AI AND ti:transformer"
+    search_query = f"cat:{arxiv_client.search_category} AND ti:{HARDCODED_SEARCH_KEYWORD}"
+    logger.info(f"Using hardcoded keyword search: {search_query} (max_results={HARDCODED_MAX_RESULTS})")
 
-    with database.get_session() as session:
-        return await metadata_fetcher.fetch_and_process_papers(
-            max_results=max_results,
-            from_date=target_date,
-            to_date=target_date,
-            process_pdfs=process_pdfs,
-            store_to_db=True,
-            db_session=session,
+    # Monkey-patch fetch_papers so MetadataFetcher uses our keyword query
+    # instead of the default date-based query.
+    original_fetch_papers = arxiv_client.fetch_papers
+
+    async def _patched_fetch_papers(*args, **kwargs):
+        return await arxiv_client.fetch_papers_with_query(
+            search_query=search_query,
+            max_results=HARDCODED_MAX_RESULTS,
+            sort_by="relevance",
+            sort_order="descending",
         )
+
+    arxiv_client.fetch_papers = _patched_fetch_papers
+    try:
+        with database.get_session() as session:
+            return await metadata_fetcher.fetch_and_process_papers(
+                max_results=HARDCODED_MAX_RESULTS,
+                from_date=None,
+                to_date=None,
+                process_pdfs=process_pdfs,
+                store_to_db=True,
+                db_session=session,
+            )
+    finally:
+        arxiv_client.fetch_papers = original_fetch_papers
 
 
 def fetch_daily_papers(**context):
     """Fetch daily papers from arXiv and store in PostgreSQL.
 
     This task:
-    1. Determines the target date (defaults to yesterday)
-    2. Fetches papers from arXiv API
-    3. Downloads and processes PDFs using Docling
-    4. Stores metadata and parsed content in PostgreSQL
+    1. Fetches papers from arXiv API using a hardcoded keyword search
+    2. Downloads and processes PDFs using Docling
+    3. Stores metadata and parsed content in PostgreSQL
 
     Note: OpenSearch indexing is handled by a separate dedicated task
     """
-    logger.info("Starting daily paper fetching task")
+    logger.info("Starting daily paper fetching task (keyword search mode)")
 
-    execution_date = context.get("execution_date")
-    if execution_date:
-        target_dt = execution_date - timedelta(days=1)
-        target_date = target_dt.strftime("%Y%m%d")
-    else:
-        yesterday = datetime.now() - timedelta(days=1)
-        target_date = yesterday.strftime("%Y%m%d")
-
-    logger.info(f"Fetching papers for date: {target_date}")
+    target_date = datetime.now().strftime("%Y%m%d")
+    logger.info(f"Run date (for reference): {target_date}")
 
     results = asyncio.run(
         run_paper_ingestion_pipeline(
@@ -64,7 +79,7 @@ def fetch_daily_papers(**context):
         )
     )
 
-    logger.info(f"Daily fetch complete: {results['papers_fetched']} papers for {target_date}")
+    logger.info(f"Daily fetch complete: {results['papers_fetched']} papers fetched")
 
     results["date"] = target_date
     ti = context.get("ti")
