@@ -80,8 +80,8 @@ services:
   # Airflow — daily arXiv ingestion DAG
   airflow:
     build:
-      context: ./airflow
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: airflow/Dockerfile
     container_name: rag-airflow
     depends_on:
       opensearch:
