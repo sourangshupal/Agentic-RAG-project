@@ -74,8 +74,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       # Pass image URIs to the deploy job via job outputs
-      api-image: ${{ steps.build-api.outputs.image }}
-      airflow-image: ${{ steps.build-airflow.outputs.image }}
+      api-image: ${{ steps.export-api.outputs.image }}
+      airflow-image: ${{ steps.export-airflow.outputs.image }}
 
     steps:
       - name: Checkout code
@@ -98,65 +98,73 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
+      # ── Free up disk space ───────────────────────────────────────────────
+      # GitHub runners have ~14GB. Our images (PyTorch, Docling, LangGraph)
+      # exceed this during build. Remove pre-installed software we don't need.
+      - name: Free up disk space
+        run: |
+          echo "Disk space before cleanup:"
+          df -h
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          docker system prune -af
+          echo "Disk space after cleanup:"
+          df -h
+
+      # ── Set up Docker Buildx ─────────────────────────────────────────────
+      # Required for docker/build-push-action and GHA cache backend.
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       # ── Build and Push: rag-api ──────────────────────────────────────────
-      # Image tag = full 40-char git commit SHA (github.sha).
-      # Also tagged as :latest for human reference and Docker layer cache.
-      # --cache-from :latest pulls the previous image to reuse unchanged layers.
+      # Uses docker/build-push-action with GHA cache backend.
+      # type=gha stores cache in GitHub Actions cache (not on disk) — avoids
+      # the "No space left on device" error that raw 'docker build' causes.
       - name: Build and push rag-api image
         id: build-api
-        env:
-          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_API_REPO }}:${{ github.sha }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_API_REPO }}:latest
+          build-args: |
+            VERSION=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # ── Store API image URI for deploy job ───────────────────────────────
+      - name: Export API image URI
+        id: export-api
         run: |
-          IMAGE_URI="${REGISTRY}/${{ env.ECR_API_REPO }}:${IMAGE_TAG}"
-          LATEST_URI="${REGISTRY}/${{ env.ECR_API_REPO }}:latest"
-
-          echo "Building API image: ${IMAGE_URI}"
-
-          docker build \
-            --cache-from "${LATEST_URI}" \
-            --build-arg BUILDKIT_INLINE_CACHE=1 \
-            --build-arg VERSION="${IMAGE_TAG}" \
-            -t "${IMAGE_URI}" \
-            -t "${LATEST_URI}" \
-            -f Dockerfile \
-            .
-
-          docker push "${IMAGE_URI}"
-          docker push "${LATEST_URI}"
-
-          # Store image URI for the deploy job
+          IMAGE_URI="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_API_REPO }}:${{ github.sha }}"
           echo "image=${IMAGE_URI}" >> $GITHUB_OUTPUT
           echo "API image pushed: ${IMAGE_URI}"
 
       # ── Build and Push: rag-airflow ──────────────────────────────────────
-      # Build context is '.' (repo root) so airflow/Dockerfile can COPY src/.
-      # The Dockerfile uses: COPY src /opt/airflow/src
-      # This bakes the application source into the image (K8s has no bind mounts).
       - name: Build and push rag-airflow image
         id: build-airflow
-        env:
-          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./airflow/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_AIRFLOW_REPO }}:${{ github.sha }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_AIRFLOW_REPO }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # ── Store Airflow image URI for deploy job ───────────────────────────
+      - name: Export Airflow image URI
+        id: export-airflow
         run: |
-          IMAGE_URI="${REGISTRY}/${{ env.ECR_AIRFLOW_REPO }}:${IMAGE_TAG}"
-          LATEST_URI="${REGISTRY}/${{ env.ECR_AIRFLOW_REPO }}:latest"
-
-          echo "Building Airflow image: ${IMAGE_URI}"
-
-          # -f airflow/Dockerfile: Dockerfile is in the airflow/ subdirectory
-          # .             (context): repo root, so COPY src/ and COPY airflow/dags/ work
-          docker build \
-            --cache-from "${LATEST_URI}" \
-            --build-arg BUILDKIT_INLINE_CACHE=1 \
-            -t "${IMAGE_URI}" \
-            -t "${LATEST_URI}" \
-            -f airflow/Dockerfile \
-            .
-
-          docker push "${IMAGE_URI}"
-          docker push "${LATEST_URI}"
-
+          IMAGE_URI="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_AIRFLOW_REPO }}:${{ github.sha }}"
           echo "image=${IMAGE_URI}" >> $GITHUB_OUTPUT
           echo "Airflow image pushed: ${IMAGE_URI}"
 
