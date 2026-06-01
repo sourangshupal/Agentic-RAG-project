@@ -329,8 +329,17 @@ kubectl create secret generic rag-app-secrets \
   --from-literal=AIRFLOW__API__AUTH_BACKENDS="airflow.api.auth.backend.basic_auth" \
   --from-literal=AIRFLOW__WEBSERVER__UPDATE_FAB_PERMS="False" \
   --from-literal=PYTHONWARNINGS="ignore::FutureWarning:airflow,ignore::DeprecationWarning:airflow" \
-  --from-literal=ARXIV__MAX_RESULTS="2" \
   --from-literal=AIRFLOW__CORE__DAG_IGNORE_FILE_SYNTAX="regexp" \
+  --from-literal=ARXIV__MAX_RESULTS="2" \
+  --from-literal=ARXIV__TIMEOUT_SECONDS="120" \
+  --from-literal=ARXIV__RATE_LIMIT_DELAY="5.0" \
+  --from-literal=ARXIV__BASE_URL="https://export.arxiv.org/api/query" \
+  --from-literal=PDF_PARSER__MAX_PAGES="60" \
+  --from-literal=PDF_PARSER__DO_OCR="false" \
+  --from-literal=CHUNKING__CHUNK_SIZE="600" \
+  --from-literal=CHUNKING__OVERLAP_SIZE="100" \
+  --from-literal=TELEGRAM__ENABLED="true" \
+  --from-literal=TELEGRAM__BOT_TOKEN="REPLACE_ME_TELEGRAM_BOT_TOKEN" \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
@@ -346,6 +355,7 @@ kubectl create secret generic rag-app-secrets \
 > - `REPLACE_ME_LOGFIRE_TOKEN`
 > - `REPLACE_ME_JINA_API_KEY`
 > - `REPLACE_ME_OPENAI_API_KEY`
+> - `REPLACE_ME_TELEGRAM_BOT_TOKEN`
 >
 > **Tip:** Use the `scripts/secrets.sh` helper to automatically read values from `.env` and create the Secret. See `.github/workflows/cd.yml` for the exact Secret keys the CI/CD pipeline creates.
 

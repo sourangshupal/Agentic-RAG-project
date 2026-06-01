@@ -25,13 +25,13 @@ class SummarizerAgent:
         logger.info("SummarizerAgent: summarizing topic=%s", topic)
 
         # Reuse existing opensearch client for text search
-        results = await self._ctx.opensearch_client.search_unified(
+        results = self._ctx.opensearch_client.search_unified(
             query=topic,
-            top_k=5,
+            size=5,
             use_hybrid=False,
         )
         hits = results.get("hits", [])
-        chunks = [hit.get("content", "") for hit in hits]
+        chunks = [hit.get("text", "") for hit in hits]
         chunks = [c for c in chunks if c]
 
         if not chunks:

@@ -18,12 +18,6 @@
   <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License">
 </p>
 
-<br>
-
-<p align="center">
-  <img src="static/agentic_rag_architecture.gif" alt="Agentic RAG Architecture" width="700">
-</p>
-
 ---
 
 ## What This System Does
@@ -44,10 +38,7 @@ The system is built incrementally across 7 phases — each phase adds a distinct
 
 ### Phase 1: Infrastructure Foundation
 
-<div align="center">
-  <img src="static/phase1_infra_setup.png" alt="Phase 1 Infrastructure Setup" width="800">
-  <p><em>Core infrastructure: FastAPI + OpenSearch + Airflow (Docker) with Neon PostgreSQL (cloud)</em></p>
-</div>
+
 
 **Components introduced:**
 - **FastAPI** — API framework with health checks and automatic docs
@@ -59,10 +50,7 @@ The system is built incrementally across 7 phases — each phase adds a distinct
 
 ### Phase 2: Data Ingestion Pipeline
 
-<div align="center">
-  <img src="static/phase2_data_ingestion_flow.png" alt="Phase 2 Data Ingestion Architecture" width="800">
-  <p><em>Automated pipeline: arXiv API → PDF parsing (Docling) → PostgreSQL storage</em></p>
-</div>
+
 
 **Components introduced:**
 - **ArxivClient** — rate-limited paper fetching with retry logic
@@ -74,10 +62,7 @@ The system is built incrementally across 7 phases — each phase adds a distinct
 
 ### Phase 3: Keyword Search (BM25)
 
-<div align="center">
-  <img src="static/phase3_opensearch_flow.png" alt="Phase 3 OpenSearch BM25 Flow" width="800">
-  <p><em>BM25 keyword search with OpenSearch — filters, boosting, and relevance scoring</em></p>
-</div>
+
 
 **Components introduced:**
 - **OpenSearch index** — text mappings with BM25 relevance tuning
@@ -88,10 +73,7 @@ The system is built incrementally across 7 phases — each phase adds a distinct
 
 ### Phase 4: Hybrid Search (BM25 + Vectors)
 
-<div align="center">
-  <img src="static/phase4_hybrid_opensearch.png" alt="Phase 4 Hybrid Search Architecture" width="800">
-  <p><em>Semantic layer added: Jina AI embeddings + RRF fusion combining keyword and vector scores</em></p>
-</div>
+
 
 **Components introduced:**
 - **Jina AI embeddings** — `jina-embeddings-v3`, 1024-dim vectors via cloud API
@@ -103,10 +85,7 @@ The system is built incrementally across 7 phases — each phase adds a distinct
 
 ### Phase 5: Complete RAG Pipeline
 
-<div align="center">
-  <img src="static/phase5_complete_rag.png" alt="Phase 5 Complete RAG System" width="800">
-  <p><em>Full RAG loop: query → hybrid search → OpenAI generation → streamed response + Gradio UI</em></p>
-</div>
+
 
 **Request flow:**
 ```
@@ -128,10 +107,7 @@ User query
 
 ### Phase 6: Production Monitoring & Caching
 
-<div align="center">
-  <img src="static/phase6_monitoring_and_caching.png" alt="Phase 6 Monitoring and Caching Architecture" width="800">
-  <p><em>Observability and performance layer: Langfuse tracing + Upstash Redis exact-match cache</em></p>
-</div>
+
 
 **Components introduced:**
 - **Langfuse Cloud** — automatic trace per request (latency, tokens, cost)
@@ -142,17 +118,11 @@ User query
 
 ### Phase 7: Agentic RAG with LangGraph & Telegram Bot
 
-<div align="center">
-  <img src="static/phase7_telegram_and_agentic_ai.png" alt="Phase 7 Agentic RAG and Telegram Architecture" width="800">
-  <p><em>Full Phase 7: Telegram bot + agentic RAG system with multi-step decision making</em></p>
-</div>
+
 
 #### LangGraph Agent Workflow
 
-<div align="center">
-  <img src="static/langgraph-mermaid.png" alt="LangGraph Agentic RAG Flow" width="800">
-  <p><em>State machine: guardrail → retrieve → grade → generate (with query rewrite retry loop)</em></p>
-</div>
+
 
 **Agent flow:**
 ```

@@ -121,7 +121,9 @@ async def lifespan(app: FastAPI):
             embeddings_client=app.state.embeddings_service,
             langfuse_tracer=app.state.langfuse_tracer,
             guardrails_service=app.state.guardrails_service,
-            model_name=settings.openai_model,
+            model_name=(
+                settings.bedrock.model_id if settings.provider == "bedrock" else settings.openai_model
+            ),
         )
         app.state.supervisor_agent = SupervisorAgent(
             context=supervisor_context,

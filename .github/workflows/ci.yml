@@ -28,6 +28,7 @@ on:
     branches:
       - main
       - aws
+      - agentops
     paths-ignore:
       - "deployment/**"   # K8s manifests don't affect Python CI
       - "*.md"            # Documentation changes don't need test runs

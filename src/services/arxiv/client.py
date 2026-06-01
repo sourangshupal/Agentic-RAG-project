@@ -130,9 +130,9 @@ class ArxivClient:
 
             except httpx.HTTPStatusError as e:
                 status_code = e.response.status_code
-                if status_code == 429 and attempt < max_retries - 1:
+                if status_code in (429, 503) and attempt < max_retries - 1:
                     wait_time = base_wait * (2 ** attempt)
-                    logger.warning(f"arXiv API rate limited (429). Waiting {wait_time}s before retry {attempt + 2}/{max_retries}...")
+                    logger.warning(f"arXiv API returned {status_code}. Waiting {wait_time}s before retry {attempt + 2}/{max_retries}...")
                     await asyncio.sleep(wait_time)
                     continue
                 logger.error(f"arXiv API HTTP error: {e}")
@@ -219,9 +219,9 @@ class ArxivClient:
 
             except httpx.HTTPStatusError as e:
                 status_code = e.response.status_code
-                if status_code == 429 and attempt < max_retries - 1:
+                if status_code in (429, 503) and attempt < max_retries - 1:
                     wait_time = base_wait * (2 ** attempt)
-                    logger.warning(f"arXiv API rate limited (429). Waiting {wait_time}s before retry {attempt + 2}/{max_retries}...")
+                    logger.warning(f"arXiv API returned {status_code}. Waiting {wait_time}s before retry {attempt + 2}/{max_retries}...")
                     await asyncio.sleep(wait_time)
                     continue
                 logger.error(f"arXiv API HTTP error: {e}")

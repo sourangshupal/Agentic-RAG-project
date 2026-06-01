@@ -44,6 +44,7 @@
 #   BEDROCK__AWS_SECRET_ACCESS_KEY — matching secret
 #   BEDROCK__MODEL_ID           — Bedrock model ARN
 #   BEDROCK__GUARDRAIL_ID       — Bedrock guardrail ID
+#   TELEGRAM__BOT_TOKEN         — Telegram bot token for production bot
 #   AIRFLOW__WEBSERVER__SECRET_KEY — Random string for Airflow sessions
 # ============================================================
 name: CD — Build, Push, Deploy to EKS
@@ -51,7 +52,8 @@ name: CD — Build, Push, Deploy to EKS
 on:
   push:
     branches:
-      - deployment   # Only deploy from this branch
+      - deployment   # Production gate
+      - agentops       # Agentops feature branch
 
 # Prevent concurrent deployments — cancel the previous run if a new push arrives
 concurrency:
@@ -244,6 +246,15 @@ jobs:
             --from-literal=PYTHONWARNINGS="ignore::FutureWarning:airflow,ignore::DeprecationWarning:airflow" \
             --from-literal=AIRFLOW__CORE__DAG_IGNORE_FILE_SYNTAX="regexp" \
             --from-literal=ARXIV__MAX_RESULTS="2" \
+            --from-literal=ARXIV__TIMEOUT_SECONDS="120" \
+            --from-literal=ARXIV__RATE_LIMIT_DELAY="5.0" \
+            --from-literal=ARXIV__BASE_URL="https://export.arxiv.org/api/query" \
+            --from-literal=PDF_PARSER__MAX_PAGES="60" \
+            --from-literal=PDF_PARSER__DO_OCR="false" \
+            --from-literal=CHUNKING__CHUNK_SIZE="600" \
+            --from-literal=CHUNKING__OVERLAP_SIZE="100" \
+            --from-literal=TELEGRAM__ENABLED="false" \
+            --from-literal=TELEGRAM__BOT_TOKEN="${{ secrets.TELEGRAM__BOT_TOKEN }}" \
             --dry-run=client -o yaml | kubectl apply -f -
 
       # ── Deploy OpenSearch ─────────────────────────────────────────────────
