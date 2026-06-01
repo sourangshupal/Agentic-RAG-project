@@ -1,0 +1,27 @@
+[
+  {
+    "id": "gd-001",
+    "question": "What is the attention mechanism in transformer models?",
+    "domain": "cs.AI"
+  },
+  {
+    "id": "gd-002",
+    "question": "How does RLHF improve language model alignment?",
+    "domain": "cs.AI"
+  },
+  {
+    "id": "gd-003",
+    "question": "Explain retrieval augmented generation and its benefits.",
+    "domain": "cs.AI"
+  },
+  {
+    "id": "gd-004",
+    "question": "What are diffusion models and how are they used in image generation?",
+    "domain": "cs.CV"
+  },
+  {
+    "id": "gd-005",
+    "question": "Describe the architecture of a graph neural network.",
+    "domain": "cs.LG"
+  }
+]
